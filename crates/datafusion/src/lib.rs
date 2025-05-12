@@ -1,13 +1,18 @@
 mod engine;
 mod error;
 mod expressions;
+mod session;
+mod table_format;
+mod table_provider;
 mod utils;
 
 // re-export the version type as it is part of public api of this crate.
 pub use delta_kernel::Version;
 pub use engine::DataFusionEngine;
+pub use session::{KernelContextExt, KernelExtensionConfig, KernelSessionExt, ObjectStoreFactory};
+pub use table_format::{ScanFileContext, TableScan, TableSnapshot};
+pub use table_provider::DeltaTableProvider;
 
-#[cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use std::path::PathBuf;
