@@ -1,0 +1,13 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+homepage = "https://delta.io"
+keywords = ["deltalake", "delta", "datalake"]
+license = "Apache-2.0"
+repository = "https://github.com/delta-incubator/deltalake-datafusion"
+readme = "README.md"
+rust-version = "1.85"
+version = "0.0.1"
