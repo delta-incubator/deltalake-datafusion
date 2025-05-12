@@ -1,5 +1,5 @@
 [package]
-name = "datafusion"
+name = "deltalake-datafusion"
 edition.workspace = true
 homepage.workspace = true
 keywords.workspace = true
@@ -35,5 +35,11 @@ tracing = "0.1"
 url = "2.5.4"
 
 [dev-dependencies]
+acceptance = { path = "../../../delta-kernel-rs/acceptance" }
 rstest = "0.25.0"
 tempfile = "3.6.0"
+
+[build-dependencies]
+ureq = "3.0"
+flate2 = "1.1"
+tar = "0.4"
