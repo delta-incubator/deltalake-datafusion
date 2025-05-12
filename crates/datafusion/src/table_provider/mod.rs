@@ -29,13 +29,14 @@ use itertools::Itertools;
 
 use self::exec::{DeltaScanExec, FILE_ID_COLUMN};
 pub use self::snapshot::DeltaTableSnapshot;
+pub use self::table_format::{ScanFileContext, TableScan, TableSnapshot};
 use crate::expressions::{to_datafusion_expr, to_delta_predicate};
 use crate::session::KernelSessionExt as _;
-use crate::table_format::{ScanFileContext, TableSnapshot};
 use crate::utils::{AsObjectStorePath, AsObjectStoreUrl};
 
 mod exec;
 mod snapshot;
+mod table_format;
 
 pub struct DeltaTableProvider {
     snapshot: Arc<dyn TableSnapshot>,

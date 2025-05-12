@@ -1,24 +1,20 @@
 use std::sync::{Arc, Weak};
 
 use datafusion::prelude::SessionContext;
-use datafusion_common::TableReference;
-use datafusion_common::{DataFusionError, Result as DFResult};
+use datafusion_common::{DataFusionError, Result as DFResult, TableReference};
 use datafusion_execution::object_store::ObjectStoreRegistry;
-use datafusion_session::Session;
-use datafusion_session::SessionStore;
+use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::default::executor::tokio::{
     TokioBackgroundExecutor, TokioMultiThreadExecutor,
 };
 use delta_kernel::object_store::ObjectStore;
-use delta_kernel::snapshot::Snapshot;
 use delta_kernel::{Engine, Table, Version};
 use parking_lot::RwLock;
 use tokio::runtime::{Handle, RuntimeFlavor};
 use url::Url;
 
 use crate::engine::DataFusionEngine;
-use crate::table_format::TableSnapshot;
-use crate::table_provider::{DeltaTableProvider, DeltaTableSnapshot};
+use crate::table_provider::{DeltaTableProvider, DeltaTableSnapshot, TableSnapshot};
 use crate::utils::AsObjectStoreUrl;
 
 /// Configuration for the kernel extension.
@@ -116,7 +112,7 @@ impl KernelExtension {
         &self,
         url: &Url,
         version: Option<Version>,
-    ) -> DFResult<Arc<Snapshot>> {
+    ) -> DFResult<Arc<dyn TableSnapshot>> {
         let table =
             Table::try_from_uri(url).map_err(|e| DataFusionError::Execution(e.to_string()))?;
         let engine = self.engine.clone();
@@ -125,7 +121,7 @@ impl KernelExtension {
                 .await
                 .map_err(|e| DataFusionError::Execution(e.to_string()))?
                 .map_err(|e| DataFusionError::Execution(e.to_string()))?;
-        Ok(snapshot.into())
+        Ok(Arc::new(DeltaTableSnapshot::try_new(snapshot.into())?))
     }
 }
 
@@ -200,8 +196,7 @@ impl KernelContextExt for SessionContext {
     ) -> DFResult<Arc<dyn TableSnapshot>> {
         self.ensure_object_store(url).await?;
         let ext = self.kernel().read().kernel_ext()?;
-        let snapshot = ext.read_snapshot(url, version).await?;
-        Ok(Arc::new(DeltaTableSnapshot::try_new(snapshot)?))
+        ext.read_snapshot(url, version).await
     }
 
     async fn register_delta(

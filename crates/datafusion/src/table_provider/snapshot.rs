@@ -18,9 +18,9 @@ use delta_kernel::{
 };
 use url::Url;
 
+use super::table_format::{ScanFileContext, TableScan, TableSnapshot};
 use crate::error::to_df_err;
 use crate::session::KernelSessionExt;
-use crate::table_format::{ScanFileContext, TableScan, TableSnapshot};
 
 pub struct DeltaTableSnapshot {
     snapshot: Arc<Snapshot>,
