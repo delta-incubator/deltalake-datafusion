@@ -11,6 +11,10 @@ use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::arrow::datatypes::{Fields, Schema};
 use datafusion::arrow::error::{ArrowError, Result};
 
+#[cfg(test)]
+#[path = "apply_schema_test.rs"]
+mod tests;
+
 // Apply a schema to an array. The array _must_ be a `StructArray`. Returns a `RecordBatch where the
 // names of fields, nullable, and metadata in the struct have been transformed to match those in
 // schema specified by `schema`
@@ -231,77 +235,5 @@ fn extract_column(mut parent: &StructArray, col: &[String]) -> Result<ArrayRef> 
             .as_any()
             .downcast_ref::<StructArray>()
             .ok_or_else(|| ArrowError::SchemaError(format!("Not a struct: {field_name}")))?;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use datafusion::arrow::{
-        array::StructArray,
-        compute::concat_batches,
-        datatypes::{Field, Schema, SchemaRef},
-        util::pretty::print_batches,
-    };
-    use datafusion::parquet::arrow::async_reader::{
-        ParquetObjectReader, ParquetRecordBatchStreamBuilder,
-    };
-    use delta_kernel::engine::arrow_data::fix_nested_null_masks;
-    use delta_kernel::object_store::{local::LocalFileSystem, path::Path};
-    use futures::StreamExt;
-
-    fn create_test_schema() -> SchemaRef {
-        let metadata_field = Field::new(
-            "metaData",
-            DataType::Struct(
-                vec![
-                    Field::new("id", DataType::Utf8, false),
-                    Field::new("name", DataType::Utf8, true),
-                    Field::new("new_field", DataType::Utf8, true),
-                ]
-                .into(),
-            ),
-            true,
-        );
-
-        let protocol_field = Field::new(
-            "protocol",
-            DataType::Struct(
-                vec![
-                    Field::new("minReaderVersion", DataType::Int32, false),
-                    Field::new("minWriterVersion", DataType::Int32, false),
-                ]
-                .into(),
-            ),
-            true,
-        );
-        Arc::new(Schema::new(vec![metadata_field, protocol_field]))
-    }
-
-    async fn create_test_batch() -> Result<RecordBatch> {
-        let store = Arc::new(LocalFileSystem::new());
-        let location = Path::from(
-            "Users/robert.pack/code/deltalake-datafusion/crates/datafusion/dat/out/reader_tests/generated/with_checkpoint/delta/_delta_log/00000000000000000002.checkpoint.parquet",
-        );
-        let reader = ParquetObjectReader::new(store.clone(), location);
-
-        let builder = ParquetRecordBatchStreamBuilder::new(reader).await?;
-        let mut batches = vec![];
-        let mut stream = builder.build()?;
-        while let Some(batch) = stream.next().await {
-            batches.push(batch?);
-        }
-        let all_data = concat_batches(batches[0].schema_ref(), &batches)?;
-        Ok(all_data)
-    }
-
-    #[tokio::test]
-    async fn test_apply_schema() {
-        let batch = create_test_batch().await.unwrap().project(&[3, 4]).unwrap();
-        let struct_arr: StructArray = batch.into();
-        // print_batches(&[batch]).unwrap();
-        let transformed = apply_schema(&struct_arr, create_test_schema().as_ref()).unwrap();
-        let fixed = fix_nested_null_masks(transformed.into());
-        print_batches(&[fixed.into()]).unwrap();
     }
 }
