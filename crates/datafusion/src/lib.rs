@@ -26,13 +26,7 @@ pub(crate) mod tests {
 
     use super::*;
 
-    static SKIPPED_TESTS: &[&str; 5] = &[
-        "iceberg_compat_v1",
-        "no_stats",
-        "no_replay",
-        "stats_as_struct",
-        "with_checkpoint",
-    ];
+    static SKIPPED_TESTS: &[&str; 1] = &["iceberg_compat_v1"];
 
     #[fixture]
     pub(crate) fn df_engine() -> (Arc<dyn Engine>, SessionContext) {

@@ -26,6 +26,7 @@ use parking_lot::RwLock;
 use tracing::warn;
 use url::Url;
 
+use super::schema_adapter::NestedSchemaAdapterFactory;
 use crate::utils::{AsObjectStoreUrl, grouped_partitioned_files};
 
 const DEFAULT_BUFFER_SIZE: usize = 1024;
@@ -37,8 +38,9 @@ pub struct DataFusionFileFormatHandler<E: TaskExecutor> {
     task_executor: Arc<E>,
     /// size of the buffer (via our `sync_channel`).
     buffer_size: usize,
-
+    /// Static configuration for reading json files
     json_source: Arc<JsonSource>,
+    /// Static configuration for reading parquet files.
     parquet_source: Arc<ParquetSource>,
 }
 
@@ -53,12 +55,14 @@ impl<E: TaskExecutor> std::fmt::Debug for DataFusionFileFormatHandler<E> {
 
 impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
     pub fn new(task_executor: Arc<E>, state: impl Into<Arc<SessionStore>>) -> Self {
+        let parquet_source = ParquetSource::default()
+            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory::default()));
         Self {
             state: state.into(),
             task_executor,
             buffer_size: DEFAULT_BUFFER_SIZE,
             json_source: Arc::new(JsonSource::default()),
-            parquet_source: Arc::new(ParquetSource::default()),
+            parquet_source: Arc::new(parquet_source),
         }
     }
 

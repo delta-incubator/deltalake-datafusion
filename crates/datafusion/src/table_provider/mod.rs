@@ -203,7 +203,7 @@ async fn compute_parquet_access_plans(
     metrics: &ExecutionPlanMetricsSet,
 ) -> Result<Vec<PartitionedFile>> {
     futures::stream::iter(files)
-        // NOTE: using filter_map here since 'map' somehow does not accept futures.
+        // HACK: using filter_map here since 'map' somehow does not accept futures.
         .filter_map(|(partitioned_file, selection_vector)| async {
             if let Some(sv) = selection_vector {
                 Some(pq_access_plan(reader_factory, partitioned_file, sv, metrics).await)
