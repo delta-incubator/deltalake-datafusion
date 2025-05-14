@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::datasource::physical_plan::parquet::{
     DefaultParquetFileReaderFactory, ParquetAccessPlan, RowGroupAccess,
 };
@@ -27,9 +26,10 @@ use delta_kernel::snapshot::Snapshot;
 use futures::stream::{StreamExt, TryStreamExt};
 use itertools::Itertools;
 
-use self::exec::{DeltaScanExec, FILE_ID_COLUMN};
+use self::exec::{DeltaScanExec, FILE_ID_FIELD};
 pub use self::snapshot::DeltaTableSnapshot;
 pub use self::table_format::{ScanFileContext, TableScan, TableSnapshot};
+use crate::engine::NestedSchemaAdapterFactory;
 use crate::expressions::{to_datafusion_expr, to_delta_predicate};
 use crate::session::KernelSessionExt as _;
 use crate::utils::{AsObjectStorePath, AsObjectStoreUrl};
@@ -40,6 +40,7 @@ mod table_format;
 
 pub struct DeltaTableProvider {
     snapshot: Arc<dyn TableSnapshot>,
+    pq_source: Arc<ParquetSource>,
 }
 
 impl std::fmt::Debug for DeltaTableProvider {
@@ -53,8 +54,11 @@ impl std::fmt::Debug for DeltaTableProvider {
 impl DeltaTableProvider {
     pub fn try_new(snapshot: Arc<Snapshot>) -> Result<Self> {
         let snapshot = DeltaTableSnapshot::try_new(snapshot)?;
+        let parquet_source = ParquetSource::default()
+            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory::default()));
         Ok(Self {
             snapshot: Arc::new(snapshot),
+            pq_source: Arc::new(parquet_source),
         })
     }
 }
@@ -127,12 +131,21 @@ impl TableProvider for DeltaTableProvider {
                 (partitioned_file, f.selection_vector),
             ))
         };
+
         let files_by_store = table_scan
             .files
             .into_iter()
             .flat_map(to_partitioned_file)
             .into_group_map();
-        let plan = get_read_plan(files_by_store, &table_scan.physical_schema, state, limit).await?;
+
+        let plan = get_read_plan(
+            files_by_store,
+            &table_scan.physical_schema,
+            state,
+            limit,
+            self.pq_source.as_ref().clone(),
+        )
+        .await?;
 
         Ok(Arc::new(DeltaScanExec::new(
             table_scan.logical_schema,
@@ -149,14 +162,14 @@ async fn get_read_plan(
     physical_schema: &ArrowSchemaRef,
     state: &dyn Session,
     limit: Option<usize>,
+    base_source: ParquetSource,
 ) -> Result<Arc<dyn ExecutionPlan>> {
-    // Create DataSourceExec plans to read all files included in the scan.
-    // A dedicated DataSourceExec plan needs to be created for each store (e.g. s3 bucket).
-    // When data is distributed across multiple stores, a UnionExec will be used to combine the results.
+    // TODO: update parquet source.
+    let source = Arc::new(base_source);
     let metrics = ExecutionPlanMetricsSet::new();
-    let source = Arc::new(ParquetSource::default());
+
     let mut plans = Vec::new();
-    let file_id_field = Field::new(FILE_ID_COLUMN, DataType::Utf8, true);
+
     for (store_url, files) in files_by_store.into_iter() {
         state.ensure_object_store(store_url.as_ref()).await?;
 
@@ -170,15 +183,20 @@ async fn get_read_plan(
         // and add it to the FileScanConfig
         let config = FileScanConfigBuilder::new(store_url, physical_schema.clone(), source.clone())
             .with_file_group(file_group.into_iter().collect())
-            .with_table_partition_cols(vec![file_id_field.clone()])
+            .with_table_partition_cols(vec![FILE_ID_FIELD.clone()])
             .with_limit(limit)
             .build();
         let plan: Arc<dyn ExecutionPlan> = DataSourceExec::from_data_source(config);
         plans.push(plan);
     }
-    Ok(match plans.len() {
+
+    let plan = match plans.len() {
         1 => plans.remove(0),
         _ => Arc::new(UnionExec::new(plans)),
+    };
+    Ok(match plan.with_fetch(limit) {
+        Some(limit) => limit,
+        None => plan,
     })
 }
 
@@ -203,7 +221,7 @@ async fn compute_parquet_access_plans(
     metrics: &ExecutionPlanMetricsSet,
 ) -> Result<Vec<PartitionedFile>> {
     futures::stream::iter(files)
-        // NOTE: using filter_map here since 'map' somehow does not accept futures.
+        // HACK: using filter_map here since 'map' somehow does not accept futures.
         .filter_map(|(partitioned_file, selection_vector)| async {
             if let Some(sv) = selection_vector {
                 Some(pq_access_plan(reader_factory, partitioned_file, sv, metrics).await)

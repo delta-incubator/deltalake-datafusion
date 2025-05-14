@@ -1,8 +1,9 @@
 use std::any::Any;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll};
 
+use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::physical_expr::PhysicalExprRef;
 use datafusion_common::HashMap;
 use datafusion_common::config::ConfigOptions;
@@ -17,6 +18,8 @@ use delta_kernel::arrow::datatypes::SchemaRef;
 use futures::stream::{Stream, StreamExt};
 
 pub(crate) const FILE_ID_COLUMN: &str = "file_id";
+pub(crate) static FILE_ID_FIELD: LazyLock<Field> =
+    LazyLock::new(|| Field::new(FILE_ID_COLUMN, DataType::Utf8, false));
 
 #[derive(Clone, Debug)]
 pub struct DeltaScanExec {
