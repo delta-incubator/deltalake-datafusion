@@ -1,20 +1,32 @@
-use std::sync::Arc;
-
 use datafusion_common::{DataFusionError, Result as DFResult, ScalarValue};
-use datafusion_expr::{BinaryExpr, Expr, Operator, utils::conjunction};
+use datafusion_expr::{BinaryExpr, Expr, Operator};
 use delta_kernel::expressions::{
-    BinaryExpression, BinaryOperator, DecimalData, Expression, JunctionExpression,
-    JunctionOperator, Scalar, UnaryExpression, UnaryOperator,
+    BinaryExpression, BinaryExpressionOp, BinaryPredicate, BinaryPredicateOp, DecimalData,
+    Expression, JunctionPredicate, JunctionPredicateOp, Predicate, Scalar, UnaryPredicate,
+    UnaryPredicateOp,
 };
 use delta_kernel::schema::{DataType, DecimalType, PrimitiveType};
+use itertools::Itertools;
 
 use crate::error::to_df_err;
 
-pub(crate) fn to_delta_predicate(filters: &[Expr]) -> DFResult<Arc<Expression>> {
-    let Some(expr) = conjunction(filters.iter().cloned()) else {
-        return Ok(Arc::new(Expression::Literal(Scalar::Boolean(true))));
+pub(crate) fn to_delta_predicate(filters: &[Expr]) -> DFResult<Predicate> {
+    if filters.is_empty() {
+        return Ok(Predicate::BooleanExpression(Expression::Literal(
+            Scalar::Boolean(true),
+        )));
     };
-    to_delta_expression(&expr).map(Arc::new)
+    Ok(Predicate::Junction(JunctionPredicate {
+        op: JunctionPredicateOp::And,
+        preds: filters.iter().map(to_predicate).try_collect()?,
+    }))
+}
+
+pub(crate) fn to_predicate(expr: &Expr) -> DFResult<Predicate> {
+    match to_delta_expression(&expr)? {
+        Expression::Predicate(pred) => Ok(pred.as_ref().clone()),
+        expr => Ok(Predicate::BooleanExpression(expr)),
+    }
 }
 
 /// Convert a DataFusion expression to a Delta expression.
@@ -31,25 +43,47 @@ pub(crate) fn to_delta_expression(expr: &Expr) -> DFResult<Expression> {
             op: op @ (Operator::And | Operator::Or),
             ..
         }) => {
-            let exprs = flatten_junction_expr(expr, *op)?;
-            Ok(Expression::Junction(JunctionExpression {
-                op: to_junction_op(*op),
-                exprs,
+            let preds = flatten_junction_expr(expr, *op)?;
+            Ok(Expression::Predicate(Box::new(Predicate::Junction(
+                JunctionPredicate {
+                    op: to_junction_op(*op),
+                    preds,
+                },
+            ))))
+        }
+        Expr::BinaryExpr(BinaryExpr {
+            op:
+                op @ (Operator::Eq
+                | Operator::NotEq
+                | Operator::Lt
+                | Operator::LtEq
+                | Operator::Gt
+                | Operator::GtEq),
+            left,
+            right,
+        }) => Ok(Expression::Predicate(Box::new(Predicate::Binary(
+            BinaryPredicate {
+                left: Box::new(to_delta_expression(left.as_ref())?),
+                op: to_binary_predicate_op(*op)?,
+                right: Box::new(to_delta_expression(right.as_ref())?),
+            },
+        )))),
+        Expr::BinaryExpr(BinaryExpr { op, left, right }) => {
+            Ok(Expression::Binary(BinaryExpression {
+                left: Box::new(to_delta_expression(left.as_ref())?),
+                op: to_binary_op(*op)?,
+                right: Box::new(to_delta_expression(right.as_ref())?),
             }))
         }
-        Expr::BinaryExpr(binary_expr) => Ok(Expression::Binary(BinaryExpression {
-            left: Box::new(to_delta_expression(binary_expr.left.as_ref())?),
-            op: to_binary_op(binary_expr.op)?,
-            right: Box::new(to_delta_expression(binary_expr.right.as_ref())?),
-        })),
-        Expr::IsNull(expr) => Ok(Expression::Unary(UnaryExpression {
-            op: UnaryOperator::IsNull,
-            expr: Box::new(to_delta_expression(expr.as_ref())?),
-        })),
-        Expr::Not(expr) => Ok(Expression::Unary(UnaryExpression {
-            op: UnaryOperator::Not,
-            expr: Box::new(to_delta_expression(expr.as_ref())?),
-        })),
+        Expr::IsNull(expr) => Ok(Expression::Predicate(Box::new(Predicate::Unary(
+            UnaryPredicate {
+                op: UnaryPredicateOp::IsNull,
+                expr: Box::new(to_delta_expression(expr.as_ref())?),
+            },
+        )))),
+        Expr::Not(expr) => Ok(Expression::Predicate(Box::new(Predicate::Not(Box::new(
+            Predicate::BooleanExpression(to_delta_expression(expr.as_ref())?),
+        ))))),
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported expression: {:?}",
             expr
@@ -126,18 +160,27 @@ fn datafusion_scalar_to_scalar(scalar: &ScalarValue) -> DFResult<Scalar> {
     }
 }
 
-fn to_binary_op(op: Operator) -> DFResult<BinaryOperator> {
+fn to_binary_predicate_op(op: Operator) -> DFResult<BinaryPredicateOp> {
     match op {
-        Operator::Eq => Ok(BinaryOperator::Equal),
-        Operator::NotEq => Ok(BinaryOperator::NotEqual),
-        Operator::Lt => Ok(BinaryOperator::LessThan),
-        Operator::LtEq => Ok(BinaryOperator::LessThanOrEqual),
-        Operator::Gt => Ok(BinaryOperator::GreaterThan),
-        Operator::GtEq => Ok(BinaryOperator::GreaterThanOrEqual),
-        Operator::Plus => Ok(BinaryOperator::Plus),
-        Operator::Minus => Ok(BinaryOperator::Minus),
-        Operator::Multiply => Ok(BinaryOperator::Multiply),
-        Operator::Divide => Ok(BinaryOperator::Divide),
+        Operator::Eq => Ok(BinaryPredicateOp::Equal),
+        Operator::NotEq => Ok(BinaryPredicateOp::NotEqual),
+        Operator::Lt => Ok(BinaryPredicateOp::LessThan),
+        Operator::LtEq => Ok(BinaryPredicateOp::LessThanOrEqual),
+        Operator::Gt => Ok(BinaryPredicateOp::GreaterThan),
+        Operator::GtEq => Ok(BinaryPredicateOp::GreaterThanOrEqual),
+        _ => Err(DataFusionError::NotImplemented(format!(
+            "Unsupported operator: {:?}",
+            op
+        ))),
+    }
+}
+
+fn to_binary_op(op: Operator) -> DFResult<BinaryExpressionOp> {
+    match op {
+        Operator::Plus => Ok(BinaryExpressionOp::Plus),
+        Operator::Minus => Ok(BinaryExpressionOp::Minus),
+        Operator::Multiply => Ok(BinaryExpressionOp::Multiply),
+        Operator::Divide => Ok(BinaryExpressionOp::Divide),
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported operator: {:?}",
             op
@@ -146,7 +189,7 @@ fn to_binary_op(op: Operator) -> DFResult<BinaryOperator> {
 }
 
 /// Helper function to flatten nested AND/OR expressions into a single junction expression
-fn flatten_junction_expr(expr: &Expr, target_op: Operator) -> DFResult<Vec<Expression>> {
+fn flatten_junction_expr(expr: &Expr, target_op: Operator) -> DFResult<Vec<Predicate>> {
     match expr {
         Expr::BinaryExpr(BinaryExpr { op, left, right }) if *op == target_op => {
             let mut left_exprs = flatten_junction_expr(left.as_ref(), target_op)?;
@@ -155,16 +198,16 @@ fn flatten_junction_expr(expr: &Expr, target_op: Operator) -> DFResult<Vec<Expre
             Ok(left_exprs)
         }
         _ => {
-            let delta_expr = to_delta_expression(expr)?;
+            let delta_expr = to_predicate(expr)?;
             Ok(vec![delta_expr])
         }
     }
 }
 
-fn to_junction_op(op: Operator) -> JunctionOperator {
+fn to_junction_op(op: Operator) -> JunctionPredicateOp {
     match op {
-        Operator::And => JunctionOperator::And,
-        Operator::Or => JunctionOperator::Or,
+        Operator::And => JunctionPredicateOp::And,
+        Operator::Or => JunctionPredicateOp::Or,
         _ => unimplemented!("Unsupported operator: {:?}", op),
     }
 }
@@ -173,15 +216,22 @@ fn to_junction_op(op: Operator) -> JunctionOperator {
 mod tests {
     use super::*;
     use datafusion_expr::{col, lit};
-    use delta_kernel::expressions::{BinaryOperator, JunctionOperator, Scalar};
+    use delta_kernel::expressions::{BinaryExpressionOp, JunctionPredicateOp, Scalar};
 
-    fn assert_junction_expr(expr: &Expr, expected_op: JunctionOperator, expected_children: usize) {
+    fn assert_junction_expr(
+        expr: &Expr,
+        expected_op: JunctionPredicateOp,
+        expected_children: usize,
+    ) {
         let delta_expr = to_delta_expression(expr).unwrap();
         match delta_expr {
-            Expression::Junction(junction) => {
-                assert_eq!(junction.op, expected_op);
-                assert_eq!(junction.exprs.len(), expected_children);
-            }
+            Expression::Predicate(predicate) => match predicate.as_ref() {
+                Predicate::Junction(junction) => {
+                    assert_eq!(junction.op, expected_op);
+                    assert_eq!(junction.preds.len(), expected_children);
+                }
+                _ => panic!("Expected Junction predicate, got {:?}", predicate),
+            },
             _ => panic!("Expected Junction expression, got {:?}", delta_expr),
         }
     }
@@ -189,13 +239,13 @@ mod tests {
     #[test]
     fn test_simple_and() {
         let expr = col("a").eq(lit(1)).and(col("b").eq(lit(2)));
-        assert_junction_expr(&expr, JunctionOperator::And, 2);
+        assert_junction_expr(&expr, JunctionPredicateOp::And, 2);
     }
 
     #[test]
     fn test_simple_or() {
         let expr = col("a").eq(lit(1)).or(col("b").eq(lit(2)));
-        assert_junction_expr(&expr, JunctionOperator::Or, 2);
+        assert_junction_expr(&expr, JunctionPredicateOp::Or, 2);
     }
 
     #[test]
@@ -205,7 +255,7 @@ mod tests {
             .and(col("b").eq(lit(2)))
             .and(col("c").eq(lit(3)))
             .and(col("d").eq(lit(4)));
-        assert_junction_expr(&expr, JunctionOperator::And, 4);
+        assert_junction_expr(&expr, JunctionPredicateOp::And, 4);
     }
 
     #[test]
@@ -215,7 +265,7 @@ mod tests {
             .or(col("b").eq(lit(2)))
             .or(col("c").eq(lit(3)))
             .or(col("d").eq(lit(4)));
-        assert_junction_expr(&expr, JunctionOperator::Or, 4);
+        assert_junction_expr(&expr, JunctionPredicateOp::Or, 4);
     }
 
     #[test]
@@ -227,21 +277,23 @@ mod tests {
 
         let delta_expr = to_delta_expression(&expr).unwrap();
         match delta_expr {
-            Expression::Junction(junction) => {
-                assert_eq!(junction.op, JunctionOperator::Or);
-                assert_eq!(junction.exprs.len(), 2);
+            Expression::Predicate(predicate) => match predicate.as_ref() {
+                Predicate::Junction(junction) => {
+                    assert_eq!(junction.op, JunctionPredicateOp::Or);
+                    assert_eq!(junction.preds.len(), 2);
 
-                // Check that both children are AND junctions
-                for child in junction.exprs {
-                    match child {
-                        Expression::Junction(child_junction) => {
-                            assert_eq!(child_junction.op, JunctionOperator::And);
-                            assert_eq!(child_junction.exprs.len(), 2);
+                    // Check that both children are AND junctions
+                    for child in &junction.preds {
+                        match child {
+                            Predicate::Junction(binary) => {
+                                assert_eq!(binary.op, JunctionPredicateOp::And);
+                            }
+                            _ => panic!("Expected Binary expression in child: {:?}", child),
                         }
-                        _ => panic!("Expected Junction expression in child"),
                     }
                 }
-            }
+                _ => panic!("Expected Junction predicate, got {:?}", predicate),
+            },
             _ => panic!("Expected Junction expression"),
         }
     }
@@ -254,7 +306,7 @@ mod tests {
             .and(col("b").eq(lit(2)))
             .and(col("c").eq(lit(3)))
             .and(col("d").eq(lit(4)));
-        assert_junction_expr(&expr, JunctionOperator::And, 4);
+        assert_junction_expr(&expr, JunctionPredicateOp::And, 4);
     }
 
     #[test]
@@ -269,28 +321,31 @@ mod tests {
 
         let delta_expr = to_delta_expression(&expr).unwrap();
         match delta_expr {
-            Expression::Junction(junction) => {
-                assert_eq!(junction.op, JunctionOperator::Or);
-                assert_eq!(junction.exprs.len(), 2);
+            Expression::Predicate(predicate) => match predicate.as_ref() {
+                Predicate::Junction(junction) => {
+                    assert_eq!(junction.op, JunctionPredicateOp::Or);
+                    assert_eq!(junction.preds.len(), 2);
 
-                // First child should be an AND with 2 expressions
-                match &junction.exprs[0] {
-                    Expression::Junction(child_junction) => {
-                        assert_eq!(child_junction.op, JunctionOperator::And);
-                        assert_eq!(child_junction.exprs.len(), 2);
+                    // First child should be an AND with 2 expressions
+                    match &junction.preds[0] {
+                        Predicate::Junction(child_junction) => {
+                            assert_eq!(child_junction.op, JunctionPredicateOp::And);
+                            assert_eq!(child_junction.preds.len(), 2);
+                        }
+                        _ => panic!("Expected Junction expression in first child"),
                     }
-                    _ => panic!("Expected Junction expression in first child"),
-                }
 
-                // Second child should be an AND with 3 expressions
-                match &junction.exprs[1] {
-                    Expression::Junction(child_junction) => {
-                        assert_eq!(child_junction.op, JunctionOperator::And);
-                        assert_eq!(child_junction.exprs.len(), 3);
+                    // Second child should be an AND with 3 expressions
+                    match &junction.preds[1] {
+                        Predicate::Junction(child_junction) => {
+                            assert_eq!(child_junction.op, JunctionPredicateOp::And);
+                            assert_eq!(child_junction.preds.len(), 3);
+                        }
+                        _ => panic!("Expected Junction expression in second child"),
                     }
-                    _ => panic!("Expected Junction expression in second child"),
                 }
-            }
+                _ => panic!("Expected Junction predicate, got {:?}", predicate),
+            },
             _ => panic!("Expected Junction expression"),
         }
     }
@@ -348,38 +403,44 @@ mod tests {
     fn test_binary_expressions() {
         // Test comparison operators
         let test_cases = vec![
-            (col("a").eq(lit(1)), BinaryOperator::Equal),
-            (col("a").not_eq(lit(1)), BinaryOperator::NotEqual),
-            (col("a").lt(lit(1)), BinaryOperator::LessThan),
-            (col("a").lt_eq(lit(1)), BinaryOperator::LessThanOrEqual),
-            (col("a").gt(lit(1)), BinaryOperator::GreaterThan),
-            (col("a").gt_eq(lit(1)), BinaryOperator::GreaterThanOrEqual),
+            (col("a").eq(lit(1)), BinaryPredicateOp::Equal),
+            (col("a").not_eq(lit(1)), BinaryPredicateOp::NotEqual),
+            (col("a").lt(lit(1)), BinaryPredicateOp::LessThan),
+            (col("a").lt_eq(lit(1)), BinaryPredicateOp::LessThanOrEqual),
+            (col("a").gt(lit(1)), BinaryPredicateOp::GreaterThan),
+            (
+                col("a").gt_eq(lit(1)),
+                BinaryPredicateOp::GreaterThanOrEqual,
+            ),
         ];
 
         for (expr, expected_op) in test_cases {
             let delta_expr = to_delta_expression(&expr).unwrap();
             match delta_expr {
-                Expression::Binary(binary) => {
-                    assert_eq!(binary.op, expected_op);
-                    match *binary.left {
-                        Expression::Column(name) => assert_eq!(name.to_string(), "a"),
-                        _ => panic!("Expected Column expression in left operand"),
+                Expression::Predicate(predicate) => match predicate.as_ref() {
+                    Predicate::Binary(binary) => {
+                        assert_eq!(binary.op, expected_op);
+                        match binary.left.as_ref() {
+                            Expression::Column(name) => assert_eq!(name.to_string(), "a"),
+                            _ => panic!("Expected Column expression in left operand"),
+                        }
+                        match *binary.right.as_ref() {
+                            Expression::Literal(Scalar::Integer(value)) => assert_eq!(value, 1),
+                            _ => panic!("Expected Integer literal in right operand"),
+                        }
                     }
-                    match *binary.right {
-                        Expression::Literal(Scalar::Integer(value)) => assert_eq!(value, 1),
-                        _ => panic!("Expected Integer literal in right operand"),
-                    }
-                }
+                    _ => panic!("Expected Binary predicate, got {:?}", predicate),
+                },
                 _ => panic!("Expected Binary expression, got {:?}", delta_expr),
             }
         }
 
         // Test arithmetic operators
         let test_cases = vec![
-            (col("a") + lit(1), BinaryOperator::Plus),
-            (col("a") - lit(1), BinaryOperator::Minus),
-            (col("a") * lit(1), BinaryOperator::Multiply),
-            (col("a") / lit(1), BinaryOperator::Divide),
+            (col("a") + lit(1), BinaryExpressionOp::Plus),
+            (col("a") - lit(1), BinaryExpressionOp::Minus),
+            (col("a") * lit(1), BinaryExpressionOp::Multiply),
+            (col("a") / lit(1), BinaryExpressionOp::Divide),
         ];
 
         for (expr, expected_op) in test_cases {
@@ -387,11 +448,11 @@ mod tests {
             match delta_expr {
                 Expression::Binary(binary) => {
                     assert_eq!(binary.op, expected_op);
-                    match *binary.left {
+                    match binary.left.as_ref() {
                         Expression::Column(name) => assert_eq!(name.to_string(), "a"),
                         _ => panic!("Expected Column expression in left operand"),
                     }
-                    match *binary.right {
+                    match *binary.right.as_ref() {
                         Expression::Literal(Scalar::Integer(value)) => assert_eq!(value, 1),
                         _ => panic!("Expected Integer literal in right operand"),
                     }
@@ -407,13 +468,16 @@ mod tests {
         let expr = col("a").is_null();
         let delta_expr = to_delta_expression(&expr).unwrap();
         match delta_expr {
-            Expression::Unary(unary) => {
-                assert_eq!(unary.op, UnaryOperator::IsNull);
-                match *unary.expr {
-                    Expression::Column(name) => assert_eq!(name.to_string(), "a"),
-                    _ => panic!("Expected Column expression in operand"),
+            Expression::Predicate(predicate) => match predicate.as_ref() {
+                Predicate::Unary(unary) => {
+                    assert_eq!(unary.op, UnaryPredicateOp::IsNull);
+                    match unary.expr.as_ref() {
+                        Expression::Column(name) => assert_eq!(name.to_string(), "a"),
+                        _ => panic!("Expected Column expression in operand"),
+                    }
                 }
-            }
+                _ => panic!("Expected Unary predicate, got {:?}", predicate),
+            },
             _ => panic!("Expected Unary expression, got {:?}", delta_expr),
         }
 
@@ -421,13 +485,16 @@ mod tests {
         let expr = !col("a");
         let delta_expr = to_delta_expression(&expr).unwrap();
         match delta_expr {
-            Expression::Unary(unary) => {
-                assert_eq!(unary.op, UnaryOperator::Not);
-                match *unary.expr {
-                    Expression::Column(name) => assert_eq!(name.to_string(), "a"),
-                    _ => panic!("Expected Column expression in operand"),
-                }
-            }
+            Expression::Predicate(predicate) => match predicate.as_ref() {
+                Predicate::Not(unary) => match unary.as_ref() {
+                    Predicate::BooleanExpression(expr) => match expr {
+                        Expression::Column(name) => assert_eq!(name.to_string(), "a"),
+                        _ => panic!("Expected Column expression in operand"),
+                    },
+                    _ => panic!("Expected Boolean expression in operand"),
+                },
+                _ => panic!("Expected Unary predicate, got {:?}", predicate),
+            },
             _ => panic!("Expected Unary expression, got {:?}", delta_expr),
         }
     }

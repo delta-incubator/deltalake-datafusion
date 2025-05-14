@@ -13,13 +13,13 @@ use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::arrow_data::ArrowEngineData;
 use delta_kernel::engine::arrow_utils::{parse_json as arrow_parse_json, to_json_bytes};
 use delta_kernel::engine::default::executor::TaskExecutor;
-use delta_kernel::object_store;
 use delta_kernel::object_store::{PutMode, path::Path};
 use delta_kernel::schema::SchemaRef;
 use delta_kernel::{
-    DeltaResult, EngineData, Error as DeltaError, ExpressionRef, FileDataReadResultIterator,
-    FileMeta, JsonHandler, ParquetHandler,
+    DeltaResult, EngineData, Error as DeltaError, Expression, ExpressionRef,
+    FileDataReadResultIterator, FileMeta, JsonHandler, ParquetHandler,
 };
+use delta_kernel::{PredicateRef, object_store};
 use futures::TryStreamExt;
 use futures::stream::{self, BoxStream, StreamExt};
 use parking_lot::RwLock;
@@ -199,7 +199,7 @@ impl<E: TaskExecutor> JsonHandler for DataFusionFileFormatHandler<E> {
         &self,
         files: &[FileMeta],
         physical_schema: SchemaRef,
-        _predicate: Option<ExpressionRef>,
+        _predicate: Option<PredicateRef>,
     ) -> DeltaResult<FileDataReadResultIterator> {
         if files.is_empty() {
             return Ok(Box::new(std::iter::empty()));
@@ -252,8 +252,10 @@ impl<E: TaskExecutor> ParquetHandler for DataFusionFileFormatHandler<E> {
         &self,
         files: &[FileMeta],
         physical_schema: SchemaRef,
-        predicate: Option<ExpressionRef>,
+        predicate: Option<PredicateRef>,
     ) -> DeltaResult<FileDataReadResultIterator> {
+        let predicate =
+            predicate.map(|p| Arc::new(Expression::Predicate(Box::new(p.as_ref().clone()))));
         let get_exec = |store_url, files, arrow_schema| {
             self.parquet_exec(store_url, files, arrow_schema, predicate.as_ref())
         };

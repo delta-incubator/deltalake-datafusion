@@ -6,7 +6,7 @@ use datafusion_common::{
     exec_datafusion_err as exec_err,
 };
 use delta_kernel::snapshot::Snapshot;
-use delta_kernel::{Engine, Expression, ExpressionRef};
+use delta_kernel::{Engine, ExpressionRef, Predicate};
 use delta_kernel::{Version, arrow::datatypes::SchemaRef as ArrowSchemaRef};
 use delta_kernel::{
     actions::Metadata,
@@ -72,7 +72,7 @@ impl TableSnapshot for DeltaTableSnapshot {
         &self,
         state: &dyn Session,
         projection: Option<&Vec<usize>>,
-        predicate: Arc<Expression>,
+        predicate: Arc<Predicate>,
     ) -> Result<TableScan> {
         scan_metadata(
             state.kernel_engine()?,
@@ -89,7 +89,7 @@ async fn scan_metadata(
     engine: Arc<dyn Engine>,
     snapshot: &Arc<Snapshot>,
     projection: Option<&Vec<usize>>,
-    predicate: Arc<Expression>,
+    predicate: Arc<Predicate>,
     table_schema: &ArrowSchemaRef,
 ) -> Result<TableScan> {
     let projected_delta_schema = project_delta_schema(table_schema, snapshot.schema(), projection);

@@ -91,10 +91,8 @@ impl TableProvider for DeltaTableProvider {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        let table_scan = self
-            .snapshot
-            .scan_metadata(state, projection, to_delta_predicate(filters)?)
-            .await?;
+        let pred = to_delta_predicate(filters)?.into();
+        let table_scan = self.snapshot.scan_metadata(state, projection, pred).await?;
 
         let delta_schema = self.snapshot.schema().into();
 
