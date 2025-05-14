@@ -8,6 +8,7 @@ use delta_kernel::{Engine, EvaluationHandler, JsonHandler, ParquetHandler, Stora
 
 pub use self::evaluation::DataFusionEvaluationHandler;
 pub use self::file_format::DataFusionFileFormatHandler;
+pub use self::schema_adapter::NestedSchemaAdapterFactory;
 pub use self::storage::DataFusionStorageHandler;
 
 mod apply_schema;

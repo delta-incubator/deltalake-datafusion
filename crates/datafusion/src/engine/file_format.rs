@@ -6,9 +6,9 @@ use datafusion_catalog::memory::DataSourceExec;
 use datafusion_common::{DataFusionError, Result as DFResult};
 use datafusion_datasource::PartitionedFile;
 use datafusion_execution::object_store::ObjectStoreUrl;
-use datafusion_physical_plan::ExecutionPlan;
 use datafusion_physical_plan::execute_stream;
 use datafusion_physical_plan::union::UnionExec;
+use datafusion_physical_plan::{ExecutionPlan, PhysicalExpr};
 use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::arrow_data::ArrowEngineData;
 use delta_kernel::engine::arrow_utils::{parse_json as arrow_parse_json, to_json_bytes};
@@ -75,6 +75,24 @@ impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
             .ok_or_else(|| DataFusionError::Execution("no active session".into()))
     }
 
+    fn physical_predicate(
+        &self,
+        predicate: &ExpressionRef,
+        arrow_schema: &ArrowSchemaRef,
+    ) -> Option<Arc<dyn PhysicalExpr>> {
+        let df_schema = arrow_schema.clone().try_into().ok();
+        let df_expr = to_datafusion_expr(predicate, &delta_kernel::schema::DataType::BOOLEAN).ok();
+        if let (Some(df_expr), Some(df_schema)) = (df_expr, df_schema) {
+            self.session()
+                .ok()?
+                .read()
+                .create_physical_expr(df_expr, &df_schema)
+                .ok()
+        } else {
+            None
+        }
+    }
+
     fn parquet_exec(
         &self,
         store_url: ObjectStoreUrl,
@@ -83,23 +101,11 @@ impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
         predicate: Option<&ExpressionRef>,
     ) -> Arc<dyn ExecutionPlan> {
         let mut pq_source = self.parquet_source.as_ref().clone();
-        let df_schema = arrow_schema.clone().try_into().ok();
-        if let (Some(df_expr), Some(df_schema)) = (
-            predicate.and_then(|e| {
-                to_datafusion_expr(e.as_ref(), &delta_kernel::schema::DataType::BOOLEAN).ok()
-            }),
-            df_schema,
-        ) {
-            if let Ok(predicate) = self
-                .session()
-                .unwrap()
-                .read()
-                .create_physical_expr(df_expr, &df_schema)
-            {
-                pq_source = pq_source.with_predicate(arrow_schema.clone(), predicate);
-            };
-        };
-
+        if let Some(physical_predicate) =
+            predicate.and_then(|p| self.physical_predicate(p, &arrow_schema))
+        {
+            pq_source = pq_source.with_predicate(arrow_schema.clone(), physical_predicate);
+        }
         let config = FileScanConfigBuilder::new(store_url, arrow_schema, Arc::new(pq_source))
             .with_file_group(files.into_iter().collect())
             .build();
