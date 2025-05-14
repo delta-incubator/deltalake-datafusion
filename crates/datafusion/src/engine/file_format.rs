@@ -27,6 +27,7 @@ use tracing::warn;
 use url::Url;
 
 use super::schema_adapter::NestedSchemaAdapterFactory;
+use crate::expressions::to_datafusion_expr;
 use crate::utils::{AsObjectStoreUrl, grouped_partitioned_files};
 
 const DEFAULT_BUFFER_SIZE: usize = 1024;
@@ -55,6 +56,7 @@ impl<E: TaskExecutor> std::fmt::Debug for DataFusionFileFormatHandler<E> {
 
 impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
     pub fn new(task_executor: Arc<E>, state: impl Into<Arc<SessionStore>>) -> Self {
+        // TODO: evaluate further config options like more advanced pruning etc ...
         let parquet_source = ParquetSource::default()
             .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory::default()));
         Self {
@@ -78,11 +80,29 @@ impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
         store_url: ObjectStoreUrl,
         files: Vec<PartitionedFile>,
         arrow_schema: ArrowSchemaRef,
+        predicate: Option<&ExpressionRef>,
     ) -> Arc<dyn ExecutionPlan> {
-        let config =
-            FileScanConfigBuilder::new(store_url, arrow_schema, self.parquet_source.clone())
-                .with_file_group(files.into_iter().collect())
-                .build();
+        let mut pq_source = self.parquet_source.as_ref().clone();
+        let df_schema = arrow_schema.clone().try_into().ok();
+        if let (Some(df_expr), Some(df_schema)) = (
+            predicate.and_then(|e| {
+                to_datafusion_expr(e.as_ref(), &delta_kernel::schema::DataType::BOOLEAN).ok()
+            }),
+            df_schema,
+        ) {
+            if let Ok(predicate) = self
+                .session()
+                .unwrap()
+                .read()
+                .create_physical_expr(df_expr, &df_schema)
+            {
+                pq_source = pq_source.with_predicate(arrow_schema.clone(), predicate);
+            };
+        };
+
+        let config = FileScanConfigBuilder::new(store_url, arrow_schema, Arc::new(pq_source))
+            .with_file_group(files.into_iter().collect())
+            .build();
         // TODO: repartitition plan to read/parse from multiple threads
         DataSourceExec::from_data_source(config)
     }
@@ -226,10 +246,11 @@ impl<E: TaskExecutor> ParquetHandler for DataFusionFileFormatHandler<E> {
         &self,
         files: &[FileMeta],
         physical_schema: SchemaRef,
-        _predicate: Option<ExpressionRef>,
+        predicate: Option<ExpressionRef>,
     ) -> DeltaResult<FileDataReadResultIterator> {
-        let get_exec =
-            |store_url, files, arrow_schema| self.parquet_exec(store_url, files, arrow_schema);
+        let get_exec = |store_url, files, arrow_schema| {
+            self.parquet_exec(store_url, files, arrow_schema, predicate.as_ref())
+        };
         let plan = self.get_plan(files, physical_schema, get_exec)?;
         Ok(self.execute_plan(plan))
     }
