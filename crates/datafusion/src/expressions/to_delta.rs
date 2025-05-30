@@ -23,7 +23,7 @@ pub(crate) fn to_delta_predicate(filters: &[Expr]) -> DFResult<Predicate> {
 }
 
 pub(crate) fn to_predicate(expr: &Expr) -> DFResult<Predicate> {
-    match to_delta_expression(&expr)? {
+    match to_delta_expression(expr)? {
         Expression::Predicate(pred) => Ok(pred.as_ref().clone()),
         expr => Ok(Predicate::BooleanExpression(expr)),
     }
@@ -52,13 +52,7 @@ pub(crate) fn to_delta_expression(expr: &Expr) -> DFResult<Expression> {
             ))))
         }
         Expr::BinaryExpr(BinaryExpr {
-            op:
-                op @ (Operator::Eq
-                | Operator::NotEq
-                | Operator::Lt
-                | Operator::LtEq
-                | Operator::Gt
-                | Operator::GtEq),
+            op: op @ (Operator::Eq | Operator::Lt | Operator::Gt),
             left,
             right,
         }) => Ok(Expression::Predicate(Box::new(Predicate::Binary(
@@ -68,6 +62,25 @@ pub(crate) fn to_delta_expression(expr: &Expr) -> DFResult<Expression> {
                 right: Box::new(to_delta_expression(right.as_ref())?),
             },
         )))),
+        Expr::BinaryExpr(BinaryExpr {
+            op: op @ (Operator::NotEq | Operator::LtEq | Operator::GtEq),
+            left,
+            right,
+        }) => {
+            let inverted = match op {
+                Operator::NotEq => Operator::Eq,
+                Operator::LtEq => Operator::Gt,
+                Operator::GtEq => Operator::Lt,
+                _ => unreachable!(),
+            };
+            Ok(Expression::Predicate(Box::new(Predicate::Not(Box::new(
+                Predicate::Binary(BinaryPredicate {
+                    left: Box::new(to_delta_expression(left.as_ref())?),
+                    op: to_binary_predicate_op(inverted)?,
+                    right: Box::new(to_delta_expression(right.as_ref())?),
+                }),
+            )))))
+        }
         Expr::BinaryExpr(BinaryExpr { op, left, right }) => {
             Ok(Expression::Binary(BinaryExpression {
                 left: Box::new(to_delta_expression(left.as_ref())?),
@@ -163,11 +176,8 @@ fn datafusion_scalar_to_scalar(scalar: &ScalarValue) -> DFResult<Scalar> {
 fn to_binary_predicate_op(op: Operator) -> DFResult<BinaryPredicateOp> {
     match op {
         Operator::Eq => Ok(BinaryPredicateOp::Equal),
-        Operator::NotEq => Ok(BinaryPredicateOp::NotEqual),
         Operator::Lt => Ok(BinaryPredicateOp::LessThan),
-        Operator::LtEq => Ok(BinaryPredicateOp::LessThanOrEqual),
         Operator::Gt => Ok(BinaryPredicateOp::GreaterThan),
-        Operator::GtEq => Ok(BinaryPredicateOp::GreaterThanOrEqual),
         _ => Err(DataFusionError::NotImplemented(format!(
             "Unsupported operator: {:?}",
             op
@@ -404,14 +414,8 @@ mod tests {
         // Test comparison operators
         let test_cases = vec![
             (col("a").eq(lit(1)), BinaryPredicateOp::Equal),
-            (col("a").not_eq(lit(1)), BinaryPredicateOp::NotEqual),
             (col("a").lt(lit(1)), BinaryPredicateOp::LessThan),
-            (col("a").lt_eq(lit(1)), BinaryPredicateOp::LessThanOrEqual),
             (col("a").gt(lit(1)), BinaryPredicateOp::GreaterThan),
-            (
-                col("a").gt_eq(lit(1)),
-                BinaryPredicateOp::GreaterThanOrEqual,
-            ),
         ];
 
         for (expr, expected_op) in test_cases {

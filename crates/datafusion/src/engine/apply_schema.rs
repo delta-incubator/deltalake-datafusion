@@ -28,10 +28,10 @@ pub(crate) fn apply_schema(array: &dyn Array, schema: &Schema) -> Result<RecordB
             ));
         }
     }
-    Ok(RecordBatch::try_new(
+    RecordBatch::try_new(
         Arc::new(Schema::new(fields)),
         columns,
-    )?)
+    )
 }
 
 // A helper that is a wrapper over `transform_field_and_col`. This will take apart the passed struct
@@ -43,7 +43,7 @@ fn transform_struct(struct_array: &StructArray, target_fields: &Fields) -> Resul
     let (transformed_fields, transformed_cols): (Vec<Arc<Field>>, Vec<ArrayRef>) = target_fields
         .iter()
         .map(
-            |field| match extract_column(&struct_array, &[field.name().clone()]) {
+            |field| match extract_column(struct_array, &[field.name().clone()]) {
                 Ok(arr) => {
                     let transformed_col = apply_schema_to(&arr, field.data_type())?;
                     Ok::<_, ArrowError>((field.clone(), transformed_col))
@@ -56,11 +56,11 @@ fn transform_struct(struct_array: &StructArray, target_fields: &Fields) -> Resul
         )
         .process_results(|iter| iter.unzip())?;
 
-    Ok(StructArray::try_new(
+    StructArray::try_new(
         transformed_fields.into(),
         transformed_cols,
         struct_array.nulls().cloned(),
-    )?)
+    )
 }
 
 // Transform a struct array. The data is in `array`, and the target fields are in `kernel_fields`.
@@ -146,9 +146,9 @@ fn apply_schema_to_list_elements(
             )?))
         }
         _ => {
-            return Err(ArrowError::SchemaError(
+            Err(ArrowError::SchemaError(
                 "Arrow claimed to be a list but isn't a ListArray".to_string(),
-            ));
+            ))
         }
     }
 }
@@ -173,13 +173,13 @@ fn apply_schema_to_map(array: &dyn Array, inner_map_fields: &Field) -> Result<Ma
         transformed_arr.data_type().clone(),
         map_field.is_nullable(),
     );
-    Ok(MapArray::try_new(
+    MapArray::try_new(
         Arc::new(transformed_field),
         offset_buffer,
         transformed_arr,
         nulls,
         ordered,
-    )?)
+    )
 }
 
 // apply `schema` to `array`. This handles renaming, and adjusting nullability and metadata. if the

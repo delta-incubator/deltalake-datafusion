@@ -55,7 +55,7 @@ impl DeltaTableProvider {
     pub fn try_new(snapshot: Arc<Snapshot>) -> Result<Self> {
         let snapshot = DeltaTableSnapshot::try_new(snapshot)?;
         let parquet_source = ParquetSource::default()
-            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory::default()));
+            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory));
         Ok(Self {
             snapshot: Arc::new(snapshot),
             pq_source: Arc::new(parquet_source),
@@ -172,8 +172,10 @@ async fn get_read_plan(
         state.ensure_object_store(store_url.as_ref()).await?;
 
         let store = state.runtime_env().object_store(&store_url)?;
-        let reader_factory: Arc<dyn ParquetFileReaderFactory> =
-            Arc::new(DefaultParquetFileReaderFactory::new(store));
+        let reader_factory = source
+            .parquet_file_reader_factory()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(DefaultParquetFileReaderFactory::new(store)));
 
         let file_group = compute_parquet_access_plans(&reader_factory, files, &metrics).await?;
 

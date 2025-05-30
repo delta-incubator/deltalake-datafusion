@@ -5,6 +5,7 @@ use datafusion_functions::core::expr_ext::FieldAccessor;
 use datafusion_functions::expr_fn::named_struct;
 use delta_kernel::Predicate;
 use delta_kernel::arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField};
+use delta_kernel::engine::arrow_conversion::TryIntoArrow;
 use delta_kernel::expressions::{
     BinaryExpression, BinaryExpressionOp, BinaryPredicate, BinaryPredicateOp, Expression,
     JunctionPredicate, JunctionPredicateOp, Scalar, UnaryPredicate, UnaryPredicateOp,
@@ -48,8 +49,11 @@ fn scalar_to_df(scalar: &Scalar) -> DFResult<ScalarValue> {
             ScalarValue::Decimal128(Some(data.bits()), data.precision(), data.scale() as i8)
         }
         Scalar::Struct(data) => {
-            let fields: Vec<ArrowField> =
-                data.fields().iter().map(TryInto::try_into).try_collect()?;
+            let fields: Vec<ArrowField> = data
+                .fields()
+                .iter()
+                .map(|f| f.try_into_arrow())
+                .try_collect()?;
             let values: Vec<_> = data.values().iter().map(scalar_to_df).try_collect()?;
             fields
                 .into_iter()
@@ -69,7 +73,12 @@ fn scalar_to_df(scalar: &Scalar) -> DFResult<ScalarValue> {
                 "Map scalar values not implemented".into(),
             ));
         }
-        Scalar::Null(data_type) => ScalarValue::try_from(&ArrowDataType::try_from(data_type)?)?,
+        Scalar::Null(data_type) => {
+            let data_type: ArrowDataType = data_type
+                .try_into_arrow()
+                .map_err(|e| DataFusionError::External(e.into()))?;
+            ScalarValue::try_from(&data_type)?
+        }
     })
 }
 
@@ -91,19 +100,13 @@ fn binary_pred_to_df(bin: &BinaryPredicate, output_type: &DataType) -> DFResult<
     let right_expr = to_datafusion_expr(right, output_type)?;
     Ok(match op {
         BinaryPredicateOp::Equal => left_expr.eq(right_expr),
-        BinaryPredicateOp::NotEqual => left_expr.not_eq(right_expr),
         BinaryPredicateOp::LessThan => left_expr.lt(right_expr),
-        BinaryPredicateOp::LessThanOrEqual => left_expr.lt_eq(right_expr),
         BinaryPredicateOp::GreaterThan => left_expr.gt(right_expr),
-        BinaryPredicateOp::GreaterThanOrEqual => left_expr.gt_eq(right_expr),
         BinaryPredicateOp::Distinct => Err(DataFusionError::NotImplemented(
             "DISTINCT operator not supported".into(),
         ))?,
         BinaryPredicateOp::In => Err(DataFusionError::NotImplemented(
             "IN operator not supported".into(),
-        ))?,
-        BinaryPredicateOp::NotIn => Err(DataFusionError::NotImplemented(
-            "NOT IN operator not supported".into(),
         ))?,
     })
 }
@@ -166,11 +169,14 @@ fn struct_to_df(fields: &[Expression], output_type: &DataType) -> DFResult<Expr>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::ops::Not;
+
     use datafusion_expr::{col, lit};
     use delta_kernel::expressions::ColumnName;
     use delta_kernel::expressions::{ArrayData, BinaryExpression, MapData, Scalar, StructData};
     use delta_kernel::schema::{ArrayType, DataType, MapType, StructField, StructType};
+
+    use super::*;
 
     /// Test conversion of primitive scalar types to DataFusion scalar values
     #[test]
@@ -594,26 +600,10 @@ mod tests {
             (
                 BinaryPredicate {
                     left: Box::new(Expression::Column(ColumnName::new(["a"]))),
-                    op: BinaryPredicateOp::NotEqual,
-                    right: Box::new(Expression::Column(ColumnName::new(["b"]))),
-                },
-                col("a").not_eq(col("b")),
-            ),
-            (
-                BinaryPredicate {
-                    left: Box::new(Expression::Column(ColumnName::new(["a"]))),
                     op: BinaryPredicateOp::LessThan,
                     right: Box::new(Expression::Column(ColumnName::new(["b"]))),
                 },
                 col("a").lt(col("b")),
-            ),
-            (
-                BinaryPredicate {
-                    left: Box::new(Expression::Column(ColumnName::new(["a"]))),
-                    op: BinaryPredicateOp::LessThanOrEqual,
-                    right: Box::new(Expression::Column(ColumnName::new(["b"]))),
-                },
-                col("a").lt_eq(col("b")),
             ),
             (
                 BinaryPredicate {
@@ -623,18 +613,42 @@ mod tests {
                 },
                 col("a").gt(col("b")),
             ),
-            (
-                BinaryPredicate {
-                    left: Box::new(Expression::Column(ColumnName::new(["a"]))),
-                    op: BinaryPredicateOp::GreaterThanOrEqual,
-                    right: Box::new(Expression::Column(ColumnName::new(["b"]))),
-                },
-                col("a").gt_eq(col("b")),
-            ),
         ];
 
         for (input, expected) in test_cases {
             let result = binary_pred_to_df(&input, &DataType::BOOLEAN).unwrap();
+            assert_eq!(result, expected);
+        }
+
+        let test_cases = vec![
+            (
+                Predicate::Not(Box::new(Predicate::Binary(BinaryPredicate {
+                    left: Box::new(Expression::Column(ColumnName::new(["a"]))),
+                    op: BinaryPredicateOp::Equal,
+                    right: Box::new(Expression::Column(ColumnName::new(["b"]))),
+                }))),
+                col("a").eq(col("b")).not(),
+            ),
+            (
+                Predicate::Not(Box::new(Predicate::Binary(BinaryPredicate {
+                    left: Box::new(Expression::Column(ColumnName::new(["a"]))),
+                    op: BinaryPredicateOp::GreaterThan,
+                    right: Box::new(Expression::Column(ColumnName::new(["b"]))),
+                }))),
+                col("a").gt(col("b")).not(),
+            ),
+            (
+                Predicate::Not(Box::new(Predicate::Binary(BinaryPredicate {
+                    left: Box::new(Expression::Column(ColumnName::new(["a"]))),
+                    op: BinaryPredicateOp::LessThan,
+                    right: Box::new(Expression::Column(ColumnName::new(["b"]))),
+                }))),
+                col("a").lt(col("b")).not(),
+            ),
+        ];
+
+        for (input, expected) in test_cases {
+            let result = predicate_to_df(&input, &DataType::BOOLEAN).unwrap();
             assert_eq!(result, expected);
         }
     }

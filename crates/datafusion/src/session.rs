@@ -2,6 +2,7 @@ use std::sync::{Arc, Weak};
 
 use datafusion::prelude::SessionContext;
 use datafusion_common::{DataFusionError, Result as DFResult, TableReference};
+use datafusion_execution::TaskContext;
 use datafusion_execution::object_store::ObjectStoreRegistry;
 use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::default::executor::tokio::{
@@ -58,7 +59,7 @@ impl KernelExtensionConfig {
     }
 
     pub fn build(self) -> SessionContext {
-        let ctx = self.context.unwrap_or(SessionContext::new());
+        let ctx = self.context.unwrap_or_default();
         let session_store = Arc::new(SessionStore::new());
 
         let engine = self.engine.unwrap_or_else(|| {
@@ -90,9 +91,9 @@ impl KernelExtensionConfig {
     }
 }
 
-impl Into<SessionContext> for KernelExtensionConfig {
-    fn into(self) -> SessionContext {
-        self.build()
+impl From<KernelExtensionConfig> for SessionContext {
+    fn from(val: KernelExtensionConfig) -> Self {
+        val.build()
     }
 }
 
@@ -148,6 +149,20 @@ impl<S: Session + ?Sized> KernelSessionExt for S {
         let registry = self.runtime_env().object_store_registry.clone();
         let ext = self.kernel_ext()?;
         ensure_object_store(url, registry, ext).await
+    }
+}
+
+#[async_trait::async_trait]
+impl KernelTaskContextExt for TaskContext {
+    fn kernel_ext(&self) -> DFResult<Arc<KernelExtension>> {
+        self.session_config()
+            .get_extension::<KernelExtension>()
+            .ok_or_else(|| DataFusionError::Execution("no engine extension found".into()))
+    }
+
+    async fn ensure_object_store(&self, url: &Url) -> DFResult<()> {
+        let registry = self.runtime_env().object_store_registry.clone();
+        ensure_object_store(url, registry, self.kernel_ext()?).await
     }
 }
 
@@ -226,6 +241,25 @@ impl KernelContextExt for SessionContext {
 
 #[async_trait::async_trait]
 pub trait KernelSessionExt: Send + Sync {
+    /// Get the engine extension for this session.
+    ///
+    /// Tries to get the kernel extension from the extension registry
+    /// on [`SessionConfig`].
+    fn kernel_ext(&self) -> DFResult<Arc<KernelExtension>>;
+
+    fn kernel_engine(&self) -> DFResult<Arc<dyn Engine>> {
+        Ok(self.kernel_ext()?.engine.clone())
+    }
+
+    async fn ensure_object_store(&self, url: &Url) -> DFResult<()>;
+}
+
+// NB This is the same as KernelSessionExt but for TaskContext.
+// Since we need to implement KernelSessionExt for the `Session` trait,
+// we need to implement a new trait for `TaskContext` as the compiler
+// will complain, that TaskContext may eventually implement Session.
+#[async_trait::async_trait]
+pub trait KernelTaskContextExt: Send + Sync {
     /// Get the engine extension for this session.
     ///
     /// Tries to get the kernel extension from the extension registry

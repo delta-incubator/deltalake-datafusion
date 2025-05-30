@@ -10,6 +10,7 @@ use datafusion_expr::ColumnarValue;
 use datafusion_physical_plan::PhysicalExpr;
 use datafusion_physical_plan::expressions::col;
 use datafusion_session::{Session, SessionStore};
+use delta_kernel::engine::arrow_conversion::TryIntoArrow as _;
 use delta_kernel::engine::arrow_data::ArrowEngineData;
 use delta_kernel::schema::{DataType, SchemaRef};
 use delta_kernel::{
@@ -54,8 +55,9 @@ impl DataFusionEvaluationHandler {
         expression: Expression,
         output_type: DataType,
     ) -> Arc<DataFusionExpressionEvaluator> {
-        let df_schema = match ArrowSchema::try_from(schema.as_ref())
-            .map_err(DataFusionError::from)
+        let maybe_schema: Result<ArrowSchema, _> = schema.as_ref().try_into_arrow();
+        let df_schema = match maybe_schema
+            .map_err(|e| DataFusionError::External(e.into()))
             .and_then(DFSchema::try_from)
         {
             Ok(v) => v,
@@ -96,8 +98,10 @@ impl EvaluationHandler for DataFusionEvaluationHandler {
     }
 
     fn null_row(&self, output_schema: SchemaRef) -> DeltaResult<Box<dyn EngineData>> {
-        let schema =
-            ArrowSchema::try_from(output_schema.as_ref()).map_err(DeltaError::generic_err)?;
+        let schema: ArrowSchema = output_schema
+            .as_ref()
+            .try_into_arrow()
+            .map_err(DeltaError::generic_err)?;
         let value = ScalarStructBuilder::new_null(schema.fields())
             .to_array_of_size(1)
             .map_err(DeltaError::generic_err)?;
@@ -170,7 +174,7 @@ impl ExpressionEvaluator for DataFusionExpressionEvaluator {
                 arr.into()
             }
             _ => {
-                let arrow_type = ArrowDataType::try_from(&self.output_type)?;
+                let arrow_type: ArrowDataType = (&self.output_type).try_into_arrow()?;
                 let output_schema =
                     ArrowSchema::new(vec![ArrowField::new("output", arrow_type, true)]);
                 RecordBatch::try_new(Arc::new(output_schema), vec![results.clone()])?
@@ -209,7 +213,7 @@ impl PredicateEvaluator for DataFusionExpressionEvaluator {
                 arr.into()
             }
             _ => {
-                let arrow_type = ArrowDataType::try_from(&self.output_type)?;
+                let arrow_type: ArrowDataType = (&self.output_type).try_into_arrow()?;
                 let output_schema =
                     ArrowSchema::new(vec![ArrowField::new("output", arrow_type, true)]);
                 RecordBatch::try_new(Arc::new(output_schema), vec![results.clone()])?
