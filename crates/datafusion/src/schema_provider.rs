@@ -4,7 +4,7 @@ use datafusion_catalog::{SchemaProvider, TableProvider};
 use datafusion_common::{error::Result, exec_err};
 
 #[derive(Debug)]
-struct OpenTableSchemaProvider {
+pub struct OpenTableSchemaProvider {
     name: String,
     catalog_name: String,
 }

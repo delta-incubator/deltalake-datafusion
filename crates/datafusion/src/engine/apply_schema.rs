@@ -28,10 +28,7 @@ pub(crate) fn apply_schema(array: &dyn Array, schema: &Schema) -> Result<RecordB
             ));
         }
     }
-    RecordBatch::try_new(
-        Arc::new(Schema::new(fields)),
-        columns,
-    )
+    RecordBatch::try_new(Arc::new(Schema::new(fields)), columns)
 }
 
 // A helper that is a wrapper over `transform_field_and_col`. This will take apart the passed struct
@@ -145,11 +142,9 @@ fn apply_schema_to_list_elements(
                 nulls,
             )?))
         }
-        _ => {
-            Err(ArrowError::SchemaError(
-                "Arrow claimed to be a list but isn't a ListArray".to_string(),
-            ))
-        }
+        _ => Err(ArrowError::SchemaError(
+            "Arrow claimed to be a list but isn't a ListArray".to_string(),
+        )),
     }
 }
 
