@@ -8,10 +8,7 @@ mod to_delta;
 mod tests {
     use super::*;
     use datafusion_expr::{col, lit};
-    use delta_kernel::{
-        expressions::{BinaryExpression, BinaryOperator, Expression},
-        schema::DataType,
-    };
+    use delta_kernel::schema::DataType;
 
     #[test]
     fn test_roundtrip_simple_and() {
@@ -74,30 +71,5 @@ mod tests {
         let delta_expr = to_delta_expression(&df_expr).unwrap();
         let df_expr_roundtrip = to_datafusion_expr(&delta_expr, &DataType::BOOLEAN).unwrap();
         assert_eq!(df_expr, df_expr_roundtrip);
-    }
-
-    #[test]
-    fn test_unsupported_operators() {
-        // Test that unsupported operators return appropriate errors
-        let delta_expr = Expression::Binary(BinaryExpression {
-            op: BinaryOperator::Distinct,
-            left: Box::new(Expression::Column("a".parse().unwrap())),
-            right: Box::new(Expression::Column("b".parse().unwrap())),
-        });
-        assert!(to_datafusion_expr(&delta_expr, &DataType::BOOLEAN).is_err());
-
-        let delta_expr = Expression::Binary(BinaryExpression {
-            op: BinaryOperator::In,
-            left: Box::new(Expression::Column("a".parse().unwrap())),
-            right: Box::new(Expression::Column("b".parse().unwrap())),
-        });
-        assert!(to_datafusion_expr(&delta_expr, &DataType::BOOLEAN).is_err());
-
-        let delta_expr = Expression::Binary(BinaryExpression {
-            op: BinaryOperator::NotIn,
-            left: Box::new(Expression::Column("a".parse().unwrap())),
-            right: Box::new(Expression::Column("b".parse().unwrap())),
-        });
-        assert!(to_datafusion_expr(&delta_expr, &DataType::BOOLEAN).is_err());
     }
 }

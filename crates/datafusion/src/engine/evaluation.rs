@@ -10,11 +10,12 @@ use datafusion_expr::ColumnarValue;
 use datafusion_physical_plan::PhysicalExpr;
 use datafusion_physical_plan::expressions::col;
 use datafusion_session::{Session, SessionStore};
+use delta_kernel::engine::arrow_conversion::TryIntoArrow as _;
 use delta_kernel::engine::arrow_data::ArrowEngineData;
 use delta_kernel::schema::{DataType, SchemaRef};
 use delta_kernel::{
     DeltaResult, EngineData, Error as DeltaError, EvaluationHandler, Expression,
-    ExpressionEvaluator,
+    ExpressionEvaluator, Predicate, PredicateEvaluator,
 };
 use parking_lot::RwLock;
 
@@ -47,17 +48,16 @@ impl DataFusionEvaluationHandler {
             .upgrade()
             .ok_or_else(|| DataFusionError::Execution("no active session".into()))
     }
-}
 
-impl EvaluationHandler for DataFusionEvaluationHandler {
-    fn new_expression_evaluator(
+    fn evaluator(
         &self,
         schema: SchemaRef,
         expression: Expression,
         output_type: DataType,
-    ) -> Arc<dyn ExpressionEvaluator> {
-        let df_schema = match ArrowSchema::try_from(schema.as_ref())
-            .map_err(DataFusionError::from)
+    ) -> Arc<DataFusionExpressionEvaluator> {
+        let maybe_schema: Result<ArrowSchema, _> = schema.as_ref().try_into_arrow();
+        let df_schema = match maybe_schema
+            .map_err(|e| DataFusionError::External(e.into()))
             .and_then(DFSchema::try_from)
         {
             Ok(v) => v,
@@ -73,10 +73,35 @@ impl EvaluationHandler for DataFusionEvaluationHandler {
             };
         DataFusionExpressionEvaluator::new(physical_expressions, output_type)
     }
+}
+
+impl EvaluationHandler for DataFusionEvaluationHandler {
+    fn new_expression_evaluator(
+        &self,
+        schema: SchemaRef,
+        expression: Expression,
+        output_type: DataType,
+    ) -> Arc<dyn ExpressionEvaluator> {
+        self.evaluator(schema, expression, output_type)
+    }
+
+    fn new_predicate_evaluator(
+        &self,
+        schema: SchemaRef,
+        predicate: Predicate,
+    ) -> Arc<dyn PredicateEvaluator> {
+        self.evaluator(
+            schema,
+            Expression::Predicate(Box::new(predicate)),
+            DataType::BOOLEAN,
+        )
+    }
 
     fn null_row(&self, output_schema: SchemaRef) -> DeltaResult<Box<dyn EngineData>> {
-        let schema =
-            ArrowSchema::try_from(output_schema.as_ref()).map_err(DeltaError::generic_err)?;
+        let schema: ArrowSchema = output_schema
+            .as_ref()
+            .try_into_arrow()
+            .map_err(DeltaError::generic_err)?;
         let value = ScalarStructBuilder::new_null(schema.fields())
             .to_array_of_size(1)
             .map_err(DeltaError::generic_err)?;
@@ -149,7 +174,46 @@ impl ExpressionEvaluator for DataFusionExpressionEvaluator {
                 arr.into()
             }
             _ => {
-                let arrow_type = ArrowDataType::try_from(&self.output_type)?;
+                let arrow_type: ArrowDataType = (&self.output_type).try_into_arrow()?;
+                let output_schema =
+                    ArrowSchema::new(vec![ArrowField::new("output", arrow_type, true)]);
+                RecordBatch::try_new(Arc::new(output_schema), vec![results.clone()])?
+            }
+        };
+
+        Ok(Box::new(ArrowEngineData::new(batch)))
+    }
+}
+
+impl PredicateEvaluator for DataFusionExpressionEvaluator {
+    fn evaluate(&self, data: &dyn EngineData) -> DeltaResult<Box<dyn EngineData>> {
+        self.raise_error()?;
+
+        let batch = data
+            .any_ref()
+            .downcast_ref::<ArrowEngineData>()
+            .ok_or_else(|| DeltaError::engine_data_type("ArrowEngineData"))?
+            .record_batch();
+
+        let results = self
+            .expr
+            .evaluate(batch)
+            // TODO(roeap): we should consider implementing EngineData for ColumnarValue directly
+            .and_then(|value| match value {
+                ColumnarValue::Array(array) => Ok(array),
+                ColumnarValue::Scalar(scalar) => scalar.to_array_of_size(batch.num_rows()),
+            })
+            .map_err(DeltaError::generic_err)?;
+
+        let batch = match &self.output_type {
+            DataType::Struct(_data) => {
+                let arr = results
+                    .as_struct_opt()
+                    .ok_or_else(|| DeltaError::generic_err("Expected struct output"))?;
+                arr.into()
+            }
+            _ => {
+                let arrow_type: ArrowDataType = (&self.output_type).try_into_arrow()?;
                 let output_schema =
                     ArrowSchema::new(vec![ArrowField::new("output", arrow_type, true)]);
                 RecordBatch::try_new(Arc::new(output_schema), vec![results.clone()])?

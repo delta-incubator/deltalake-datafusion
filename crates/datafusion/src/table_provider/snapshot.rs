@@ -5,8 +5,7 @@ use datafusion_common::{
     error::{DataFusionError, DataFusionErrorBuilder, Result},
     exec_datafusion_err as exec_err,
 };
-use delta_kernel::snapshot::Snapshot;
-use delta_kernel::{Engine, Expression, ExpressionRef};
+use delta_kernel::{Engine, ExpressionRef, Predicate};
 use delta_kernel::{Version, arrow::datatypes::SchemaRef as ArrowSchemaRef};
 use delta_kernel::{
     actions::Metadata,
@@ -16,6 +15,7 @@ use delta_kernel::{
     actions::Protocol,
     schema::{Schema as DeltaSchema, SchemaRef as DeltaSchemaRef},
 };
+use delta_kernel::{engine::arrow_conversion::TryIntoArrow, snapshot::Snapshot};
 use url::Url;
 
 use super::table_format::{ScanFileContext, TableScan, TableSnapshot};
@@ -38,7 +38,7 @@ impl std::fmt::Debug for DeltaTableSnapshot {
 
 impl DeltaTableSnapshot {
     pub fn try_new(snapshot: Arc<Snapshot>) -> Result<Self> {
-        let table_schema = Arc::new(snapshot.schema().as_ref().try_into()?);
+        let table_schema = Arc::new(snapshot.schema().as_ref().try_into_arrow()?);
         Ok(Self {
             snapshot,
             table_schema,
@@ -72,7 +72,7 @@ impl TableSnapshot for DeltaTableSnapshot {
         &self,
         state: &dyn Session,
         projection: Option<&Vec<usize>>,
-        predicate: Arc<Expression>,
+        predicate: Arc<Predicate>,
     ) -> Result<TableScan> {
         scan_metadata(
             state.kernel_engine()?,
@@ -89,7 +89,7 @@ async fn scan_metadata(
     engine: Arc<dyn Engine>,
     snapshot: &Arc<Snapshot>,
     projection: Option<&Vec<usize>>,
-    predicate: Arc<Expression>,
+    predicate: Arc<Predicate>,
     table_schema: &ArrowSchemaRef,
 ) -> Result<TableScan> {
     let projected_delta_schema = project_delta_schema(table_schema, snapshot.schema(), projection);
@@ -105,7 +105,8 @@ async fn scan_metadata(
     let scan_state = scan.global_scan_state();
     let table_root =
         Url::parse(&scan_state.table_root).map_err(|e| DataFusionError::External(Box::new(e)))?;
-    let physical_schema: ArrowSchemaRef = Arc::new(scan_state.physical_schema.as_ref().try_into()?);
+    let physical_schema: ArrowSchemaRef =
+        Arc::new(scan_state.physical_schema.as_ref().try_into_arrow()?);
 
     let scan_inner = move || {
         let mut context = ScanContext::new(engine.clone(), table_root);
@@ -125,7 +126,7 @@ async fn scan_metadata(
     Ok(TableScan {
         files,
         physical_schema,
-        logical_schema: Arc::new(scan_state.logical_schema.as_ref().try_into()?),
+        logical_schema: Arc::new(scan_state.logical_schema.as_ref().try_into_arrow()?),
     })
 }
 

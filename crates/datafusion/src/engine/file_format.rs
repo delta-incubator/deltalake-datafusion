@@ -10,16 +10,17 @@ use datafusion_physical_plan::execute_stream;
 use datafusion_physical_plan::union::UnionExec;
 use datafusion_physical_plan::{ExecutionPlan, PhysicalExpr};
 use datafusion_session::{Session, SessionStore};
+use delta_kernel::engine::arrow_conversion::TryIntoArrow as _;
 use delta_kernel::engine::arrow_data::ArrowEngineData;
-use delta_kernel::engine::arrow_utils::{parse_json as arrow_parse_json, to_json_bytes};
 use delta_kernel::engine::default::executor::TaskExecutor;
-use delta_kernel::object_store;
+use delta_kernel::engine::{parse_json as arrow_parse_json, to_json_bytes};
 use delta_kernel::object_store::{PutMode, path::Path};
 use delta_kernel::schema::SchemaRef;
 use delta_kernel::{
-    DeltaResult, EngineData, Error as DeltaError, ExpressionRef, FileDataReadResultIterator,
-    FileMeta, JsonHandler, ParquetHandler,
+    DeltaResult, EngineData, Error as DeltaError, Expression, ExpressionRef,
+    FileDataReadResultIterator, FileMeta, JsonHandler, ParquetHandler,
 };
+use delta_kernel::{PredicateRef, object_store};
 use futures::TryStreamExt;
 use futures::stream::{self, BoxStream, StreamExt};
 use parking_lot::RwLock;
@@ -58,7 +59,7 @@ impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
     pub fn new(task_executor: Arc<E>, state: impl Into<Arc<SessionStore>>) -> Self {
         // TODO: evaluate further config options like more advanced pruning etc ...
         let parquet_source = ParquetSource::default()
-            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory::default()));
+            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory));
         Self {
             state: state.into(),
             task_executor,
@@ -137,7 +138,7 @@ impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
         ) -> Arc<dyn ExecutionPlan>,
     ) -> DeltaResult<Arc<dyn ExecutionPlan>> {
         let files_by_store = grouped_partitioned_files(files)?;
-        let arrow_schema: ArrowSchemaRef = Arc::new(physical_schema.as_ref().try_into()?);
+        let arrow_schema: ArrowSchemaRef = Arc::new(physical_schema.as_ref().try_into_arrow()?);
 
         let mut plans = Vec::new();
 
@@ -160,6 +161,7 @@ impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
 
         let (tx, rx) = mpsc::sync_channel(self.buffer_size);
 
+        // TODO: evaluate if we can re-use ReceiverStreamBuilder or related here
         self.task_executor.spawn(async move {
             let mut stream: BoxStream<'_, DeltaResult<Box<dyn EngineData>>> =
                 match execute_stream(plan, task_ctx).map_err(DeltaError::generic_err) {
@@ -199,7 +201,7 @@ impl<E: TaskExecutor> JsonHandler for DataFusionFileFormatHandler<E> {
         &self,
         files: &[FileMeta],
         physical_schema: SchemaRef,
-        _predicate: Option<ExpressionRef>,
+        _predicate: Option<PredicateRef>,
     ) -> DeltaResult<FileDataReadResultIterator> {
         if files.is_empty() {
             return Ok(Box::new(std::iter::empty()));
@@ -252,8 +254,10 @@ impl<E: TaskExecutor> ParquetHandler for DataFusionFileFormatHandler<E> {
         &self,
         files: &[FileMeta],
         physical_schema: SchemaRef,
-        predicate: Option<ExpressionRef>,
+        predicate: Option<PredicateRef>,
     ) -> DeltaResult<FileDataReadResultIterator> {
+        let predicate =
+            predicate.map(|p| Arc::new(Expression::Predicate(Box::new(p.as_ref().clone()))));
         let get_exec = |store_url, files, arrow_schema| {
             self.parquet_exec(store_url, files, arrow_schema, predicate.as_ref())
         };

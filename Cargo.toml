@@ -17,4 +17,4 @@ delta_kernel = { path = "../delta-kernel-rs/kernel", features = [
   "default-engine",
   "arrow",
   "internal-api",
-] }
+], version = "0.11.0" }

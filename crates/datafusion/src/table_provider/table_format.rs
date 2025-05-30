@@ -6,7 +6,7 @@ use delta_kernel::actions::{Metadata, Protocol};
 use delta_kernel::arrow::datatypes::SchemaRef as ArrowSchemaRef;
 use delta_kernel::scan::state::Stats;
 use delta_kernel::schema::SchemaRef as DeltaSchemaRef;
-use delta_kernel::{Expression, ExpressionRef, Version};
+use delta_kernel::{ExpressionRef, Predicate, Version};
 use url::Url;
 
 pub struct ScanFileContext {
@@ -60,6 +60,6 @@ pub trait TableSnapshot: std::fmt::Debug + Send + Sync {
         &self,
         state: &dyn Session,
         projection: Option<&Vec<usize>>,
-        predicate: Arc<Expression>,
+        predicate: Arc<Predicate>,
     ) -> Result<TableScan>;
 }
