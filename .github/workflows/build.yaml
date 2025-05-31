@@ -1,0 +1,61 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/**"
+
+env:
+  # Disable full debug symbol generation to speed up CI build and keep memory down
+  RUSTFLAGS: -C debuginfo=line-tables-only
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo fmt -- --check
+
+      - run: cargo clippy --all-features -- -D warnings
+
+  unit_test:
+    strategy:
+      fail-fast: true
+      matrix:
+        is_pr:
+          - ${{ github.event_name == 'pull_request' }}
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        exclude:
+          # Exclude windows-latest on pull requests since it's slow
+          - os: windows-latest
+            is_pr: true
+
+    name: Unit Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo test --all-features

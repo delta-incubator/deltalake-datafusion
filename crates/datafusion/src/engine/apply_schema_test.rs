@@ -292,8 +292,12 @@ fn test_apply_schema_type_mismatch() -> Result<()> {
 
     // Create target schema with mismatched types
     let schema = Schema::new(vec![
-        Field::new("a", DataType::Int64, false), // Changed from Int32 to Int64
-        Field::new("b", DataType::Int32, false), // Changed from Int64 to Int32
+        Field::new("a", DataType::Int32, false),
+        Field::new(
+            "c",
+            DataType::List(Arc::new(Field::new("inner", DataType::Int64, false))),
+            false,
+        ),
     ]);
 
     // Apply schema should fail due to type mismatch

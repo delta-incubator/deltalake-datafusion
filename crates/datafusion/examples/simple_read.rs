@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use datafusion::execution::context::SessionContext;
 use datafusion::arrow::util::pretty::print_batches;
+use datafusion::execution::context::SessionContext;
 use delta_kernel::Table;
 use deltalake_datafusion::{DeltaLogTableProvider, KernelContextExt as _};
 use url::Url;
