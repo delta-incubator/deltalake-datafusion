@@ -26,11 +26,14 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - run: cargo fmt -- --check
+      - name: Run cargo fmt
+        run: cargo fmt -- --check
 
-      - run: cargo clippy --all-features -- -D warnings
+      - name: Run cargo clippy
+        run: cargo clippy --all-features -- -D warnings
 
   unit_test:
     strategy:
@@ -56,6 +59,11 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - run: cargo test --all-features
+      - name: Load DAT data
+        uses: ./.github/actions/load-dat
+
+      - name: Run tests
+        run: cargo test --all-features

@@ -35,7 +35,7 @@ tracing = "0.1"
 url = "2.5.4"
 
 [dev-dependencies]
-# acceptance = { path = "../../../delta-kernel-rs/acceptance" }
+acceptance = { path = "../acceptance" }
 rstest = "0.25.0"
 tempfile = "3.6.0"
 
