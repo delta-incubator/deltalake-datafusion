@@ -19,7 +19,7 @@ use delta_kernel::{
 };
 use parking_lot::RwLock;
 
-use crate::expressions::to_datafusion_expr;
+use super::expressions::to_datafusion_expr;
 
 static ERROR_EXPR: LazyLock<Arc<dyn PhysicalExpr>> = LazyLock::new(|| {
     let err_schema = Arc::new(ArrowSchema::new(vec![ArrowField::new(
