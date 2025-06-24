@@ -12,7 +12,6 @@ pub use self::file_format::DataFusionFileFormatHandler;
 pub use self::schema_adapter::NestedSchemaAdapterFactory;
 pub use self::storage::DataFusionStorageHandler;
 
-mod apply_schema;
 mod evaluation;
 mod expressions;
 mod file_format;

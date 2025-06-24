@@ -8,7 +8,9 @@ use datafusion_common::Result;
 use datafusion_datasource::schema_adapter::{SchemaAdapter, SchemaAdapterFactory, SchemaMapper};
 use delta_kernel::engine::arrow_data::fix_nested_null_masks;
 
-use super::apply_schema::apply_schema;
+use self::apply_schema::apply_schema;
+
+mod apply_schema;
 
 #[derive(Debug)]
 pub struct NestedSchemaMapper {
