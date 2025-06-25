@@ -27,8 +27,8 @@ use parking_lot::RwLock;
 use tracing::warn;
 use url::Url;
 
+use super::expressions::to_datafusion_expr;
 use super::schema_adapter::NestedSchemaAdapterFactory;
-use crate::expressions::to_datafusion_expr;
 use crate::utils::{AsObjectStoreUrl, grouped_partitioned_files};
 
 const DEFAULT_BUFFER_SIZE: usize = 1024;

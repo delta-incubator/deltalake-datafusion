@@ -1,3 +1,5 @@
+//! Datafusion `TableProvider` implementation for Delta tables.
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -30,7 +32,7 @@ use self::exec::{DeltaScanExec, FILE_ID_FIELD};
 pub use self::snapshot::DeltaTableSnapshot;
 pub use self::table_format::{ScanFileContext, TableScan, TableSnapshot};
 use crate::engine::NestedSchemaAdapterFactory;
-use crate::expressions::{to_datafusion_expr, to_delta_predicate};
+use crate::engine::{to_datafusion_expr, to_delta_predicate};
 use crate::session::KernelSessionExt as _;
 use crate::utils::{AsObjectStorePath, AsObjectStoreUrl};
 

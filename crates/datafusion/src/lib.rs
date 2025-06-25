@@ -3,9 +3,7 @@
 
 mod engine;
 mod error;
-mod expressions;
 mod log_table_provider;
-#[allow(unused)]
 mod schema_provider;
 mod session;
 mod table_provider;
@@ -15,6 +13,7 @@ mod utils;
 pub use delta_kernel::Version;
 pub use engine::DataFusionEngine;
 pub use log_table_provider::{DeltaLogReplayProvider, DeltaLogTableProvider};
+pub use schema_provider::OpenTableSchemaProvider;
 pub use session::{
     KernelContextExt, KernelExtensionConfig, KernelSessionExt, KernelTaskContextExt,
     ObjectStoreFactory,
