@@ -102,12 +102,11 @@ async fn scan_metadata(
         .build()
         .map_err(to_df_err)?;
 
-    let scan_state = scan.global_scan_state();
-    let table_root =
-        Url::parse(&scan_state.table_root).map_err(|e| DataFusionError::External(Box::new(e)))?;
+    let table_root = scan.table_root().clone();
     let physical_schema: ArrowSchemaRef =
-        Arc::new(scan_state.physical_schema.as_ref().try_into_arrow()?);
+        Arc::new(scan.physical_schema().as_ref().try_into_arrow()?);
     let physical_predicate = scan.physical_predicate();
+    let logical_schema = Arc::new(scan.logical_schema().as_ref().try_into_arrow()?);
 
     let scan_inner = move || {
         let mut context = ScanContext::new(engine.clone(), table_root);
@@ -128,7 +127,7 @@ async fn scan_metadata(
         files,
         physical_schema,
         physical_predicate,
-        logical_schema: Arc::new(scan_state.logical_schema.as_ref().try_into_arrow()?),
+        logical_schema,
     })
 }
 
