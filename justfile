@@ -6,3 +6,6 @@ load-dat:
     mkdir -p dat
     tar --no-same-permissions -xzf deltalake-dat-v{{ dat_version }}.tar.gz --directory dat
     rm deltalake-dat-v{{ dat_version }}.tar.gz
+
+notebooks:
+  uv run --directory notebooks marimo edit
