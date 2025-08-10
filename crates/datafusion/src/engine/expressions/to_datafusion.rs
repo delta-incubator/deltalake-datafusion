@@ -1,5 +1,5 @@
 use datafusion_common::scalar::ScalarStructBuilder;
-use datafusion_common::{DataFusionError, Result as DFResult, ScalarValue};
+use datafusion_common::{DataFusionError, Result as DFResult, ScalarValue, not_impl_err};
 use datafusion_expr::{Expr, col, lit};
 use datafusion_functions::core::expr_ext::FieldAccessor;
 use datafusion_functions::expr_fn::named_struct;
@@ -26,6 +26,8 @@ pub(crate) fn to_datafusion_expr(expr: &Expression, output_type: &DataType) -> D
         Expression::Predicate(expr) => predicate_to_df(expr, output_type),
         Expression::Struct(fields) => struct_to_df(fields, output_type),
         Expression::Binary(expr) => binary_to_df(expr, output_type),
+        Expression::Opaque(_) => not_impl_err!("Opaque expressions are not yet supported"),
+        Expression::Unknown(_) => not_impl_err!("Unknown expressions are not yet supported"),
     }
 }
 
@@ -118,6 +120,8 @@ fn predicate_to_df(predicate: &Predicate, output_type: &DataType) -> DFResult<Ex
         Predicate::Unary(expr) => unary_pred_to_df(expr, output_type),
         Predicate::Binary(expr) => binary_pred_to_df(expr, output_type),
         Predicate::Junction(expr) => junction_to_df(expr, output_type),
+        Predicate::Opaque(_) => not_impl_err!("Opaque predicates are not yet supported"),
+        Predicate::Unknown(_) => not_impl_err!("Unknown predicates are not yet supported"),
     }
 }
 

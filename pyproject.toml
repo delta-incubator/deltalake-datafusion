@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "ipykernel>=6.29.5",
+    "marimo[recommended]>=0.14.16",
     "pyarrow>=20.0.0",
     "pyiceberg[sql-sqlite]>=0.9.1",
 ]

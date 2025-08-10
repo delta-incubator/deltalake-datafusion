@@ -9,7 +9,7 @@ use delta_kernel::engine::default::executor::tokio::{
     TokioBackgroundExecutor, TokioMultiThreadExecutor,
 };
 use delta_kernel::object_store::ObjectStore;
-use delta_kernel::{Engine, Table, Version};
+use delta_kernel::{Engine, Snapshot, Version};
 use parking_lot::RwLock;
 use tokio::runtime::{Handle, RuntimeFlavor};
 use url::Url;
@@ -114,11 +114,10 @@ impl KernelExtension {
         url: &Url,
         version: Option<Version>,
     ) -> DFResult<Arc<dyn TableSnapshot>> {
-        let table =
-            Table::try_from_uri(url).map_err(|e| DataFusionError::Execution(e.to_string()))?;
+        let url = url.clone();
         let engine = self.engine.clone();
         let snapshot =
-            tokio::task::spawn_blocking(move || table.snapshot(engine.as_ref(), version))
+            tokio::task::spawn_blocking(move || Snapshot::try_new(url, engine.as_ref(), version))
                 .await
                 .map_err(|e| DataFusionError::Execution(e.to_string()))?
                 .map_err(|e| DataFusionError::Execution(e.to_string()))?;
@@ -219,18 +218,22 @@ impl KernelContextExt for SessionContext {
         table_ref: impl Into<TableReference> + Send,
         url: &Url,
     ) -> DFResult<()> {
-        let table =
-            Table::try_from_uri(url).map_err(|e| DataFusionError::Execution(e.to_string()))?;
-        self.ensure_object_store(table.location()).await?;
+        self.ensure_object_store(url).await?;
+
+        let mut url = url.clone();
+        if !url.path().ends_with('/') {
+            url.set_path(&format!("{}/", url.path()));
+        }
 
         let engine = self.kernel_engine()?;
 
         // NB: Engine needs to list all fields and read some log,
         // so we need to run it in a blocking thread.
-        let snapshot = tokio::task::spawn_blocking(move || table.snapshot(engine.as_ref(), None))
-            .await
-            .map_err(|e| DataFusionError::Execution(e.to_string()))?
-            .map_err(|e| DataFusionError::Execution(e.to_string()))?;
+        let snapshot =
+            tokio::task::spawn_blocking(move || Snapshot::try_new(url, engine.as_ref(), None))
+                .await
+                .map_err(|e| DataFusionError::Execution(e.to_string()))?
+                .map_err(|e| DataFusionError::Execution(e.to_string()))?;
 
         let provider = DeltaTableProvider::try_new(snapshot.into())
             .map_err(|e| DataFusionError::Execution(e.to_string()))?;
