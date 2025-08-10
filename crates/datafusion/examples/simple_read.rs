@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use datafusion::arrow::util::pretty::print_batches;
 use datafusion::execution::context::SessionContext;
-use delta_kernel::Table;
 use deltalake_datafusion::{DeltaLogTableProvider, KernelContextExt as _};
 use url::Url;
 
-static PATH: &str = "/Users/robert.pack/code/deltalake-datafusion/crates/datafusion/dat/out/reader_tests/generated/";
+static PATH: &str = "/Users/robert.pack/code/deltalake-datafusion/dat/out/reader_tests/generated/";
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,8 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let df = df.collect().await?;
     print_batches(&df)?;
 
-    let table = Table::try_from_uri(table_url)?;
-    let log_provider = DeltaLogTableProvider::new(table.into())?;
+    let log_provider = DeltaLogTableProvider::new(table_url)?;
 
     ctx.register_table("delta_log", Arc::new(log_provider))?;
     let df = ctx

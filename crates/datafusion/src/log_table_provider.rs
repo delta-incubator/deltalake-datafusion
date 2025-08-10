@@ -28,9 +28,10 @@ use delta_kernel::arrow::datatypes::SchemaRef as ArrowSchemaRef;
 use delta_kernel::engine::arrow_conversion::TryIntoArrow as _;
 use delta_kernel::engine::arrow_data::ArrowEngineData;
 use delta_kernel::scan::{Scan, ScanMetadata, scan_row_schema};
-use delta_kernel::{Table, snapshot::Snapshot};
+use delta_kernel::snapshot::Snapshot;
 use futures::Stream;
 use itertools::Itertools;
+use url::Url;
 
 use crate::session::{KernelSessionExt, KernelTaskContextExt};
 
@@ -41,11 +42,14 @@ static SCAN_ROW_SCHEMA: LazyLock<ArrowSchemaRef> =
 
 #[derive(Debug)]
 pub struct DeltaLogTableProvider {
-    table: Arc<Table>,
+    table: Url,
 }
 
 impl DeltaLogTableProvider {
-    pub fn new(table: Arc<Table>) -> Result<Self> {
+    pub fn new(mut table: Url) -> Result<Self> {
+        if !table.path().ends_with('/') {
+            table.set_path(&format!("{}/", table.path()));
+        }
         Ok(Self { table })
     }
 
@@ -84,7 +88,7 @@ impl TableProvider for DeltaLogTableProvider {
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let engine = state.kernel_engine()?;
-        let table_root = self.table.location().clone();
+        let table_root = self.table.clone();
 
         let snapshot = tokio::task::spawn_blocking(move || {
             Snapshot::try_new(table_root, engine.as_ref(), None)
@@ -135,11 +139,14 @@ impl TableProvider for DeltaLogTableProvider {
 
 #[derive(Debug)]
 pub struct DeltaLogReplayProvider {
-    table: Arc<Table>,
+    table: Url,
 }
 
 impl DeltaLogReplayProvider {
-    pub fn new(table: Arc<Table>) -> Result<Self> {
+    pub fn new(mut table: Url) -> Result<Self> {
+        if !table.path().ends_with('/') {
+            table.set_path(&format!("{}/", table.path()));
+        }
         Ok(Self { table })
     }
 
@@ -183,7 +190,7 @@ impl TableProvider for DeltaLogReplayProvider {
         // TODO: handle predicate - this needs to be applied in the stream where we produce the
         // record batches
         let engine = state.kernel_engine()?;
-        let table_root = self.table.location().clone();
+        let table_root = self.table.clone();
 
         let snapshot = tokio::task::spawn_blocking(move || {
             Snapshot::try_new(table_root, engine.as_ref(), None)

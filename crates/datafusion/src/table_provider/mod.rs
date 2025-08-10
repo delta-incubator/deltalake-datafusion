@@ -14,10 +14,11 @@ use datafusion::parquet::file::metadata::RowGroupMetaData;
 use datafusion::physical_plan::{ExecutionPlan, union::UnionExec};
 use datafusion_catalog::{Session, TableProvider};
 use datafusion_common::error::Result;
-use datafusion_common::{DFSchema, DataFusionError, HashMap, ScalarValue};
+use datafusion_common::{DFSchema, DataFusionError, HashMap, ScalarValue, not_impl_err};
 use datafusion_datasource::PartitionedFile;
 use datafusion_datasource::source::DataSourceExec;
 use datafusion_execution::object_store::ObjectStoreUrl;
+use datafusion_expr::dml::InsertOp;
 use datafusion_expr::{Expr, TableProviderFilterPushDown, TableType};
 use datafusion_physical_plan::PhysicalExpr;
 use datafusion_physical_plan::metrics::ExecutionPlanMetricsSet;
@@ -152,6 +153,35 @@ impl TableProvider for DeltaTableProvider {
             plan,
             Arc::new(transform_by_file),
         )))
+    }
+
+    /// Return an [`ExecutionPlan`] to insert data into this table, if
+    /// supported.
+    ///
+    /// The returned plan should return a single row in a UInt64
+    /// column called "count" such as the following
+    ///
+    /// ```text
+    /// +-------+,
+    /// | count |,
+    /// +-------+,
+    /// | 6     |,
+    /// +-------+,
+    /// ```
+    ///
+    /// # See Also
+    ///
+    /// See [`DataSinkExec`] for the common pattern of inserting a
+    /// streams of `RecordBatch`es as files to an ObjectStore.
+    ///
+    /// [`DataSinkExec`]: datafusion_datasource::sink::DataSinkExec
+    async fn insert_into(
+        &self,
+        _state: &dyn Session,
+        _input: Arc<dyn ExecutionPlan>,
+        _insert_op: InsertOp,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        not_impl_err!("Insert into not implemented for this table")
     }
 }
 
