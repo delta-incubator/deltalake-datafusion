@@ -4,11 +4,11 @@ use datafusion::arrow::array::{AsArray, RecordBatch};
 use datafusion::arrow::datatypes::{
     DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema,
 };
-use datafusion_common::scalar::ScalarStructBuilder;
-use datafusion_common::{DFSchema, DataFusionError, Result as DFResult};
-use datafusion_expr::ColumnarValue;
-use datafusion_physical_plan::PhysicalExpr;
-use datafusion_physical_plan::expressions::col;
+use datafusion::common::scalar::ScalarStructBuilder;
+use datafusion::common::{DFSchema, DataFusionError, Result as DFResult};
+use datafusion::logical_expr::ColumnarValue;
+use datafusion::physical_plan::PhysicalExpr;
+use datafusion::physical_plan::expressions::col;
 use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::arrow_conversion::TryIntoArrow as _;
 use delta_kernel::engine::arrow_data::ArrowEngineData;

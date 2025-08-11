@@ -8,19 +8,18 @@ use datafusion::arrow::array::{AsArray, BooleanArray};
 use datafusion::arrow::compute::filter_record_batch;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::arrow::record_batch::RecordBatch;
+use datafusion::catalog::memory::MemorySourceConfig;
+use datafusion::catalog::{Session, TableProvider};
+use datafusion::common::DataFusionError;
+use datafusion::common::error::Result;
+use datafusion::datasource::source::DataSourceExec;
+use datafusion::execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext};
+use datafusion::logical_expr::utils::conjunction;
+use datafusion::logical_expr::{ColumnarValue, Expr, TableProviderFilterPushDown, TableType};
 use datafusion::physical_expr::EquivalenceProperties;
-use datafusion::physical_plan::ExecutionPlan;
-use datafusion_catalog::memory::MemorySourceConfig;
-use datafusion_catalog::{Session, TableProvider};
-use datafusion_common::DataFusionError;
-use datafusion_common::error::Result;
-use datafusion_datasource::source::DataSourceExec;
-use datafusion_execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext};
-use datafusion_expr::utils::conjunction;
-use datafusion_expr::{ColumnarValue, Expr, TableProviderFilterPushDown, TableType};
-use datafusion_physical_plan::execution_plan::{Boundedness, EmissionType};
-use datafusion_physical_plan::{
-    DisplayAs, DisplayFormatType, Partitioning, PhysicalExpr, PlanProperties,
+use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
+use datafusion::physical_plan::{
+    DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, PhysicalExpr, PlanProperties,
 };
 use delta_kernel::DeltaResult;
 use delta_kernel::actions::get_log_schema;
@@ -367,7 +366,7 @@ impl Stream for DeltaLogReplayStream {
                 // Apply the selection vector to the record batch
                 let predicate = BooleanArray::from(metadata.scan_files.selection_vector);
                 let mut record_batch = filter_record_batch(data.record_batch(), &predicate)
-                    .map_err(|e| DataFusionError::ArrowError(e, None));
+                    .map_err(|e| DataFusionError::ArrowError(Box::new(e), None));
 
                 // Apply the predicate to the record batch
                 if let (Some(predicate), Ok(batch)) = (&this.predicate, &record_batch) {
@@ -376,7 +375,7 @@ impl Stream for DeltaLogReplayStream {
                             ColumnarValue::Array(array) => {
                                 let bool_array = array.as_boolean();
                                 record_batch = filter_record_batch(data.record_batch(), bool_array)
-                                    .map_err(|e| DataFusionError::ArrowError(e, None));
+                                    .map_err(|e| DataFusionError::ArrowError(Box::new(e), None));
                             }
                             ColumnarValue::Scalar(_scalar) => {
                                 todo!("handle scalar value");
@@ -396,7 +395,7 @@ impl Stream for DeltaLogReplayStream {
                     record_batch = record_batch.and_then(|batch| {
                         batch
                             .project(projection)
-                            .map_err(|e| DataFusionError::ArrowError(e, None))
+                            .map_err(|e| DataFusionError::ArrowError(Box::new(e), None))
                     });
                 }
 

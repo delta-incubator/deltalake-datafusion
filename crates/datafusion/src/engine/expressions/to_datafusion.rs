@@ -1,6 +1,6 @@
-use datafusion_common::scalar::ScalarStructBuilder;
-use datafusion_common::{DataFusionError, Result as DFResult, ScalarValue, not_impl_err};
-use datafusion_expr::{Expr, col, lit};
+use datafusion::common::scalar::ScalarStructBuilder;
+use datafusion::common::{DataFusionError, Result as DFResult, ScalarValue, not_impl_err};
+use datafusion::logical_expr::{Expr, col, lit};
 use datafusion_functions::core::expr_ext::FieldAccessor;
 use datafusion_functions::expr_fn::named_struct;
 use delta_kernel::Predicate;
@@ -175,7 +175,7 @@ fn struct_to_df(fields: &[Expression], output_type: &DataType) -> DFResult<Expr>
 mod tests {
     use std::ops::Not;
 
-    use datafusion_expr::{col, lit};
+    use datafusion::logical_expr::{col, lit};
     use delta_kernel::expressions::ColumnName;
     use delta_kernel::expressions::{ArrayData, BinaryExpression, MapData, Scalar, StructData};
     use delta_kernel::schema::{ArrayType, DataType, MapType, StructField, StructType};

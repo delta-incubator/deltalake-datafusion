@@ -4,8 +4,8 @@ use datafusion::arrow::{
     array::{RecordBatch, StructArray},
     datatypes::{Schema, SchemaRef},
 };
-use datafusion_common::Result;
-use datafusion_datasource::schema_adapter::{SchemaAdapter, SchemaAdapterFactory, SchemaMapper};
+use datafusion::common::{ColumnStatistics, Result};
+use datafusion::datasource::schema_adapter::{SchemaAdapter, SchemaAdapterFactory, SchemaMapper};
 use delta_kernel::engine::arrow_data::fix_nested_null_masks;
 
 use self::apply_schema::apply_schema;
@@ -22,6 +22,13 @@ impl SchemaMapper for NestedSchemaMapper {
         let struct_arr: StructArray = batch.into();
         let transformed = apply_schema(&struct_arr, self.projected_table_schema.as_ref()).unwrap();
         Ok(fix_nested_null_masks(transformed.into()).into())
+    }
+
+    fn map_column_statistics(
+        &self,
+        _file_col_statistics: &[ColumnStatistics],
+    ) -> Result<Vec<ColumnStatistics>> {
+        todo!()
     }
 }
 

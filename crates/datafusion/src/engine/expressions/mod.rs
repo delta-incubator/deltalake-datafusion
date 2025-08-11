@@ -8,7 +8,7 @@ mod to_delta;
 mod tests {
     use std::ops::Not;
 
-    use datafusion_expr::{col, lit};
+    use datafusion::logical_expr::{col, lit};
     use delta_kernel::schema::DataType;
 
     use super::*;

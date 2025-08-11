@@ -1,13 +1,14 @@
 use std::{any::Any, sync::Arc};
 
 use dashmap::DashMap;
+use datafusion::catalog::{SchemaProvider, TableProvider};
+use datafusion::common::{DataFusionError, error::Result, exec_err};
 use datafusion::execution::SessionState;
-use datafusion_catalog::{SchemaProvider, TableProvider};
-use datafusion_common::{DataFusionError, error::Result, exec_err};
 use delta_kernel::Snapshot;
 use parking_lot::RwLock;
 use url::Url;
 
+use crate::session::ensure_object_store;
 use crate::{DeltaTableProvider, KernelSessionExt as _};
 
 #[derive(Debug)]
@@ -29,7 +30,14 @@ impl DeltaLakeSchemaProvider {
         name: impl ToString,
         url: &Url,
     ) -> Result<Arc<dyn TableProvider>> {
-        self.state.read().ensure_object_store(url).await?;
+        let ext = self.state.read().kernel_ext()?;
+        let registry = self
+            .state
+            .read()
+            .runtime_env()
+            .object_store_registry
+            .clone();
+        ensure_object_store(url, registry, ext).await?;
 
         let mut url = url.clone();
         if !url.path().ends_with('/') {
@@ -112,17 +120,14 @@ impl SchemaProvider for DeltaLakeSchemaProvider {
         &self,
         name: String,
         table: Arc<dyn TableProvider>,
-    ) -> datafusion_common::Result<Option<Arc<dyn TableProvider>>> {
+    ) -> Result<Option<Arc<dyn TableProvider>>> {
         if self.table_exist(name.as_str()) {
             return exec_err!("The table {name} already exists");
         }
         Ok(self.tables.insert(name, table))
     }
 
-    fn deregister_table(
-        &self,
-        name: &str,
-    ) -> datafusion_common::Result<Option<Arc<dyn TableProvider>>> {
+    fn deregister_table(&self, name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
         Ok(self.tables.remove(name).map(|(_, table)| table))
     }
 

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use datafusion::arrow::util::pretty::print_batches;
+use datafusion::catalog::CatalogProvider;
 use datafusion::catalog::MemoryCatalogProvider;
 use datafusion::execution::context::SessionContext;
-use datafusion_catalog::CatalogProvider;
 use deltalake_datafusion::{DeltaLakeSchemaProvider, KernelContextExt as _};
 use url::Url;
 
