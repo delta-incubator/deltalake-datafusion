@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use datafusion::arrow::util::pretty::print_batches;
+use datafusion::catalog::CatalogProvider;
+use datafusion::catalog::MemoryCatalogProvider;
 use datafusion::execution::context::SessionContext;
-use deltalake_datafusion::{DeltaLogTableProvider, KernelContextExt as _};
+use deltalake_datafusion::{DeltaLakeSchemaProvider, KernelContextExt as _};
 use url::Url;
 
 static PATH: &str = "/Users/robert.pack/code/deltalake-datafusion/dat/out/reader_tests/generated/";
@@ -13,43 +15,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table_url = base.join("column_mapping/delta")?;
 
     let ctx = SessionContext::new().enable_delta_kernel(None);
+
+    // register and read a single table
+    // TODO: right now the table provider does not internally refresh the snapshot
+    // when a table scan is initiated.
     ctx.register_delta("delta_table", &table_url).await?;
 
     let df = ctx.sql("SELECT * FROM delta_table").await?;
     let df = df.collect().await?;
     print_batches(&df)?;
 
-    let log_provider = DeltaLogTableProvider::new(table_url)?;
+    let schema = DeltaLakeSchemaProvider::new(ctx.state_ref());
+    schema.register_delta("delta_table", &table_url).await?;
+    let catalog = Arc::new(MemoryCatalogProvider::new());
+    catalog.register_schema("delta", Arc::new(schema))?;
+    ctx.register_catalog("delta", catalog);
 
-    ctx.register_table("delta_log", Arc::new(log_provider))?;
-    let df = ctx
-        .sql(
-            r#"
-            WITH delta_log_pruned AS (
-                SELECT 1 as key, "metaData", protocol
-                FROM delta_log
-                WHERE "protocol" IS NOT NULL OR "metaData" IS NOT NULL
-            )
-            SELECT "metaData", protocol
-            FROM (
-                SELECT "metaData", protocol
-                FROM delta_log_pruned
-                WHERE "metaData" IS NOT NULL
-                LIMIT 1
-            )
-            UNION ALL
-            SELECT "metaData", protocol
-            FROM (
-                SELECT "metaData", protocol
-                FROM delta_log_pruned
-                WHERE "protocol" IS NOT NULL
-                LIMIT 1
-            )
-            "#,
-        )
-        .await?;
+    let df = ctx.sql("SELECT * FROM delta.delta.delta_table").await?;
     let df = df.collect().await?;
-
     print_batches(&df)?;
 
     Ok(())

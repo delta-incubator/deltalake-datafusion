@@ -1,9 +1,9 @@
 use std::sync::{Arc, Weak};
 
+use datafusion::common::{DataFusionError, Result as DFResult, TableReference};
+use datafusion::execution::TaskContext;
+use datafusion::execution::object_store::ObjectStoreRegistry;
 use datafusion::prelude::SessionContext;
-use datafusion_common::{DataFusionError, Result as DFResult, TableReference};
-use datafusion_execution::TaskContext;
-use datafusion_execution::object_store::ObjectStoreRegistry;
 use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::default::executor::tokio::{
     TokioBackgroundExecutor, TokioMultiThreadExecutor,
@@ -229,14 +229,14 @@ impl KernelContextExt for SessionContext {
 
         // NB: Engine needs to list all fields and read some log,
         // so we need to run it in a blocking thread.
-        let snapshot =
-            tokio::task::spawn_blocking(move || Snapshot::try_new(url, engine.as_ref(), None))
-                .await
-                .map_err(|e| DataFusionError::Execution(e.to_string()))?
-                .map_err(|e| DataFusionError::Execution(e.to_string()))?;
+        let snapshot = tokio::task::spawn_blocking(move || {
+            Snapshot::try_new(url, engine.as_ref(), None)
+                .map_err(|e| DataFusionError::Execution(e.to_string()))
+        })
+        .await
+        .map_err(|e| DataFusionError::Execution(e.to_string()))??;
 
-        let provider = DeltaTableProvider::try_new(snapshot.into())
-            .map_err(|e| DataFusionError::Execution(e.to_string()))?;
+        let provider = DeltaTableProvider::try_new(snapshot.into())?;
         self.register_table(table_ref, Arc::new(provider))?;
         Ok(())
     }
@@ -311,7 +311,7 @@ impl private::KernelContextExtInner for SessionContext {
     }
 }
 
-async fn ensure_object_store(
+pub(crate) async fn ensure_object_store(
     url: &Url,
     registry: Arc<dyn ObjectStoreRegistry>,
     kernel: Arc<KernelExtension>,

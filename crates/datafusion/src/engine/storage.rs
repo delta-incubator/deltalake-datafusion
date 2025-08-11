@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use dashmap::DashMap;
 use dashmap::mapref::one::Ref;
-use datafusion_execution::object_store::{ObjectStoreRegistry, ObjectStoreUrl};
+use datafusion::execution::object_store::{ObjectStoreRegistry, ObjectStoreUrl};
 use datafusion_session::SessionStore;
 use delta_kernel::engine::default::executor::TaskExecutor;
 use delta_kernel::engine::default::filesystem::ObjectStoreStorageHandler;

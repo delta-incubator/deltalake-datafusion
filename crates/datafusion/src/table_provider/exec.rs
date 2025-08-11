@@ -4,15 +4,15 @@ use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll};
 
 use datafusion::arrow::datatypes::{DataType, Field};
+use datafusion::common::HashMap;
+use datafusion::common::config::ConfigOptions;
+use datafusion::common::error::{DataFusionError, Result};
+use datafusion::execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext};
+use datafusion::logical_expr::ColumnarValue;
 use datafusion::physical_expr::PhysicalExprRef;
-use datafusion_common::HashMap;
-use datafusion_common::config::ConfigOptions;
-use datafusion_common::error::{DataFusionError, Result};
-use datafusion_execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext};
-use datafusion_expr::ColumnarValue;
-use datafusion_physical_plan::execution_plan::{CardinalityEffect, PlanProperties};
-use datafusion_physical_plan::metrics::{BaselineMetrics, ExecutionPlanMetricsSet, MetricsSet};
-use datafusion_physical_plan::{DisplayAs, DisplayFormatType, ExecutionPlan, Statistics};
+use datafusion::physical_plan::execution_plan::{CardinalityEffect, PlanProperties};
+use datafusion::physical_plan::metrics::{BaselineMetrics, ExecutionPlanMetricsSet, MetricsSet};
+use datafusion::physical_plan::{DisplayAs, DisplayFormatType, ExecutionPlan, Statistics};
 use delta_kernel::arrow::array::{AsArray, RecordBatch};
 use delta_kernel::arrow::datatypes::SchemaRef;
 use futures::stream::{Stream, StreamExt};
@@ -138,7 +138,7 @@ impl ExecutionPlan for DeltaScanExec {
     }
 
     fn statistics(&self) -> Result<Statistics> {
-        self.input.statistics()
+        self.input.partition_statistics(None)
     }
 
     fn supports_limit_pushdown(&self) -> bool {

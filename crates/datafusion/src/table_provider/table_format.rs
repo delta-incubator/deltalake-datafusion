@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use datafusion_catalog::Session;
-use datafusion_common::error::Result;
+use datafusion::catalog::Session;
+use datafusion::common::error::Result;
 use delta_kernel::actions::{Metadata, Protocol};
 use delta_kernel::arrow::datatypes::SchemaRef as ArrowSchemaRef;
 use delta_kernel::scan::state::Stats;

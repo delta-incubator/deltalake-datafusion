@@ -1,6 +1,6 @@
-use datafusion_common::HashMap;
-use datafusion_datasource::PartitionedFile;
-use datafusion_execution::object_store::ObjectStoreUrl;
+use datafusion::common::HashMap;
+use datafusion::datasource::listing::PartitionedFile;
+use datafusion::execution::object_store::ObjectStoreUrl;
 use delta_kernel::object_store::path::Path;
 use delta_kernel::{DeltaResult, Error as DeltaError, FileMeta, FileSlice};
 use itertools::Itertools;

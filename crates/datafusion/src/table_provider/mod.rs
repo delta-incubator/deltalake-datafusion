@@ -3,25 +3,25 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use datafusion::catalog::{Session, TableProvider};
+use datafusion::common::error::Result;
+use datafusion::common::{DFSchema, DataFusionError, HashMap, ScalarValue, not_impl_err};
+use datafusion::datasource::listing::PartitionedFile;
+use datafusion::datasource::physical_plan::FileSource;
 use datafusion::datasource::physical_plan::parquet::{
     DefaultParquetFileReaderFactory, ParquetAccessPlan, RowGroupAccess,
 };
 use datafusion::datasource::physical_plan::{
     FileScanConfigBuilder, ParquetFileReaderFactory, ParquetSource,
 };
+use datafusion::datasource::source::DataSourceExec;
+use datafusion::execution::object_store::ObjectStoreUrl;
+use datafusion::logical_expr::dml::InsertOp;
+use datafusion::logical_expr::{Expr, TableProviderFilterPushDown, TableType};
 use datafusion::parquet::arrow::arrow_reader::RowSelection;
 use datafusion::parquet::file::metadata::RowGroupMetaData;
-use datafusion::physical_plan::{ExecutionPlan, union::UnionExec};
-use datafusion_catalog::{Session, TableProvider};
-use datafusion_common::error::Result;
-use datafusion_common::{DFSchema, DataFusionError, HashMap, ScalarValue, not_impl_err};
-use datafusion_datasource::PartitionedFile;
-use datafusion_datasource::source::DataSourceExec;
-use datafusion_execution::object_store::ObjectStoreUrl;
-use datafusion_expr::dml::InsertOp;
-use datafusion_expr::{Expr, TableProviderFilterPushDown, TableType};
-use datafusion_physical_plan::PhysicalExpr;
-use datafusion_physical_plan::metrics::ExecutionPlanMetricsSet;
+use datafusion::physical_plan::metrics::ExecutionPlanMetricsSet;
+use datafusion::physical_plan::{ExecutionPlan, PhysicalExpr, union::UnionExec};
 use delta_kernel::ExpressionRef;
 use delta_kernel::arrow::datatypes::SchemaRef as ArrowSchemaRef;
 use delta_kernel::schema::DataType as DeltaDataType;
@@ -42,8 +42,7 @@ mod snapshot;
 mod table_format;
 
 pub struct DeltaTableProvider {
-    snapshot: Arc<dyn TableSnapshot>,
-    pq_source: Arc<ParquetSource>,
+    snapshot: Arc<DeltaTableSnapshot>,
 }
 
 impl std::fmt::Debug for DeltaTableProvider {
@@ -57,12 +56,13 @@ impl std::fmt::Debug for DeltaTableProvider {
 impl DeltaTableProvider {
     pub fn try_new(snapshot: Arc<Snapshot>) -> Result<Self> {
         let snapshot = DeltaTableSnapshot::try_new(snapshot)?;
-        let parquet_source = ParquetSource::default()
-            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory));
         Ok(Self {
             snapshot: Arc::new(snapshot),
-            pq_source: Arc::new(parquet_source),
         })
+    }
+
+    pub(crate) fn current_snapshot(&self) -> &Arc<Snapshot> {
+        self.snapshot.current_snapshot()
     }
 }
 
@@ -139,14 +139,7 @@ impl TableProvider for DeltaTableProvider {
             .flat_map(to_partitioned_file)
             .into_group_map();
 
-        let plan = get_read_plan(
-            files_by_store,
-            &table_scan.physical_schema,
-            state,
-            limit,
-            self.pq_source.as_ref().clone(),
-        )
-        .await?;
+        let plan = get_read_plan(files_by_store, &table_scan.physical_schema, state, limit).await?;
 
         Ok(Arc::new(DeltaScanExec::new(
             table_scan.logical_schema,
@@ -192,10 +185,9 @@ async fn get_read_plan(
     physical_schema: &ArrowSchemaRef,
     state: &dyn Session,
     limit: Option<usize>,
-    base_source: ParquetSource,
 ) -> Result<Arc<dyn ExecutionPlan>> {
     // TODO: update parquet source.
-    let source = Arc::new(base_source);
+    let source = ParquetSource::default();
     let metrics = ExecutionPlanMetricsSet::new();
 
     let mut plans = Vec::new();
@@ -213,7 +205,9 @@ async fn get_read_plan(
 
         // TODO: convert passed predicate to an expression in terms of physical columns
         // and add it to the FileScanConfig
-        let config = FileScanConfigBuilder::new(store_url, physical_schema.clone(), source.clone())
+        let file_source =
+            source.with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory))?;
+        let config = FileScanConfigBuilder::new(store_url, physical_schema.clone(), file_source)
             .with_file_group(file_group.into_iter().collect())
             .with_table_partition_cols(vec![FILE_ID_FIELD.clone()])
             .with_limit(limit)

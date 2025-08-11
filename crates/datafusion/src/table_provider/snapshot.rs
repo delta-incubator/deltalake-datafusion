@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use datafusion_catalog::Session;
-use datafusion_common::{
+use datafusion::catalog::Session;
+use datafusion::common::{
     error::{DataFusionError, DataFusionErrorBuilder, Result},
     exec_datafusion_err as exec_err,
 };
@@ -43,6 +43,10 @@ impl DeltaTableSnapshot {
             snapshot,
             table_schema,
         })
+    }
+
+    pub(crate) fn current_snapshot(&self) -> &Arc<Snapshot> {
+        &self.snapshot
     }
 }
 

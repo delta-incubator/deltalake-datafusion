@@ -13,7 +13,7 @@ mod utils;
 pub use delta_kernel::Version;
 pub use engine::DataFusionEngine;
 pub use log_table_provider::{DeltaLogReplayProvider, DeltaLogTableProvider};
-pub use schema_provider::OpenTableSchemaProvider;
+pub use schema_provider::DeltaLakeSchemaProvider;
 pub use session::{
     KernelContextExt, KernelExtensionConfig, KernelSessionExt, KernelTaskContextExt,
     ObjectStoreFactory,

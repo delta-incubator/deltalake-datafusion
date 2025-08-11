@@ -1,14 +1,16 @@
 use std::sync::{Arc, mpsc};
 
 use datafusion::arrow::datatypes::SchemaRef as ArrowSchemaRef;
-use datafusion::datasource::physical_plan::{FileScanConfigBuilder, JsonSource, ParquetSource};
-use datafusion_catalog::memory::DataSourceExec;
-use datafusion_common::{DataFusionError, Result as DFResult};
-use datafusion_datasource::PartitionedFile;
-use datafusion_execution::object_store::ObjectStoreUrl;
-use datafusion_physical_plan::execute_stream;
-use datafusion_physical_plan::union::UnionExec;
-use datafusion_physical_plan::{ExecutionPlan, PhysicalExpr};
+use datafusion::catalog::memory::DataSourceExec;
+use datafusion::common::{DataFusionError, Result as DFResult};
+use datafusion::datasource::listing::PartitionedFile;
+use datafusion::datasource::physical_plan::{
+    FileScanConfigBuilder, FileSource as _, JsonSource, ParquetSource,
+};
+use datafusion::execution::object_store::ObjectStoreUrl;
+use datafusion::physical_plan::execute_stream;
+use datafusion::physical_plan::union::UnionExec;
+use datafusion::physical_plan::{ExecutionPlan, PhysicalExpr};
 use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::arrow_conversion::TryIntoArrow as _;
 use delta_kernel::engine::arrow_data::ArrowEngineData;
@@ -42,8 +44,6 @@ pub struct DataFusionFileFormatHandler<E: TaskExecutor> {
     buffer_size: usize,
     /// Static configuration for reading json files
     json_source: Arc<JsonSource>,
-    /// Static configuration for reading parquet files.
-    parquet_source: Arc<ParquetSource>,
 }
 
 impl<E: TaskExecutor> std::fmt::Debug for DataFusionFileFormatHandler<E> {
@@ -56,16 +56,12 @@ impl<E: TaskExecutor> std::fmt::Debug for DataFusionFileFormatHandler<E> {
 }
 
 impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
-    pub fn new(task_executor: Arc<E>, state: impl Into<Arc<SessionStore>>) -> Self {
-        // TODO: evaluate further config options like more advanced pruning etc ...
-        let parquet_source = ParquetSource::default()
-            .with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory));
+    pub fn try_new(task_executor: Arc<E>, state: impl Into<Arc<SessionStore>>) -> Self {
         Self {
             state: state.into(),
             task_executor,
             buffer_size: DEFAULT_BUFFER_SIZE,
             json_source: Arc::new(JsonSource::default()),
-            parquet_source: Arc::new(parquet_source),
         }
     }
 
@@ -100,18 +96,22 @@ impl<E: TaskExecutor> DataFusionFileFormatHandler<E> {
         files: Vec<PartitionedFile>,
         arrow_schema: ArrowSchemaRef,
         predicate: Option<&ExpressionRef>,
-    ) -> Arc<dyn ExecutionPlan> {
-        let mut pq_source = self.parquet_source.as_ref().clone();
+    ) -> DFResult<Arc<dyn ExecutionPlan>> {
+        let mut pq_source = ParquetSource::default();
         if let Some(physical_predicate) =
             predicate.and_then(|p| self.physical_predicate(p, &arrow_schema))
         {
-            pq_source = pq_source.with_predicate(arrow_schema.clone(), physical_predicate);
+            pq_source = pq_source.with_predicate(physical_predicate);
         }
-        let config = FileScanConfigBuilder::new(store_url, arrow_schema, Arc::new(pq_source))
+
+        let file_source =
+            pq_source.with_schema_adapter_factory(Arc::new(NestedSchemaAdapterFactory))?;
+
+        let config = FileScanConfigBuilder::new(store_url, arrow_schema, file_source)
             .with_file_group(files.into_iter().collect())
             .build();
         // TODO: repartitition plan to read/parse from multiple threads
-        DataSourceExec::from_data_source(config)
+        Ok(DataSourceExec::from_data_source(config))
     }
 
     fn json_exec(
@@ -260,6 +260,7 @@ impl<E: TaskExecutor> ParquetHandler for DataFusionFileFormatHandler<E> {
             predicate.map(|p| Arc::new(Expression::Predicate(Box::new(p.as_ref().clone()))));
         let get_exec = |store_url, files, arrow_schema| {
             self.parquet_exec(store_url, files, arrow_schema, predicate.as_ref())
+                .unwrap()
         };
         let plan = self.get_plan(files, physical_schema, get_exec)?;
         Ok(self.execute_plan(plan))

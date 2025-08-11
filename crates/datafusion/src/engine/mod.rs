@@ -29,7 +29,7 @@ impl<E: TaskExecutor> DataFusionEngine<E> {
     pub fn new(task_executor: Arc<E>, ctx: &SessionContext) -> Self {
         let session_store = Arc::new(SessionStore::new());
         let evaluation_handler = Arc::new(DataFusionEvaluationHandler::new(session_store.clone()));
-        let file_format_handler = Arc::new(DataFusionFileFormatHandler::new(
+        let file_format_handler = Arc::new(DataFusionFileFormatHandler::try_new(
             task_executor.clone(),
             session_store.clone(),
         ));
@@ -51,7 +51,7 @@ impl<E: TaskExecutor> DataFusionEngine<E> {
     /// and assure it is not dropped prematurely.
     pub fn new_with_session_store(task_executor: Arc<E>, session_store: Arc<SessionStore>) -> Self {
         let evaluation_handler = Arc::new(DataFusionEvaluationHandler::new(session_store.clone()));
-        let file_format_handler = Arc::new(DataFusionFileFormatHandler::new(
+        let file_format_handler = Arc::new(DataFusionFileFormatHandler::try_new(
             task_executor.clone(),
             session_store.clone(),
         ));
