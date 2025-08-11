@@ -44,6 +44,10 @@ impl DeltaTableSnapshot {
             table_schema,
         })
     }
+
+    pub(crate) fn current_snapshot(&self) -> &Arc<Snapshot> {
+        &self.snapshot
+    }
 }
 
 #[async_trait::async_trait]

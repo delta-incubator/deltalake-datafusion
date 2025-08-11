@@ -229,14 +229,14 @@ impl KernelContextExt for SessionContext {
 
         // NB: Engine needs to list all fields and read some log,
         // so we need to run it in a blocking thread.
-        let snapshot =
-            tokio::task::spawn_blocking(move || Snapshot::try_new(url, engine.as_ref(), None))
-                .await
-                .map_err(|e| DataFusionError::Execution(e.to_string()))?
-                .map_err(|e| DataFusionError::Execution(e.to_string()))?;
+        let snapshot = tokio::task::spawn_blocking(move || {
+            Snapshot::try_new(url, engine.as_ref(), None)
+                .map_err(|e| DataFusionError::Execution(e.to_string()))
+        })
+        .await
+        .map_err(|e| DataFusionError::Execution(e.to_string()))??;
 
-        let provider = DeltaTableProvider::try_new(snapshot.into())
-            .map_err(|e| DataFusionError::Execution(e.to_string()))?;
+        let provider = DeltaTableProvider::try_new(snapshot.into())?;
         self.register_table(table_ref, Arc::new(provider))?;
         Ok(())
     }

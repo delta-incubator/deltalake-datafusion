@@ -42,7 +42,7 @@ mod snapshot;
 mod table_format;
 
 pub struct DeltaTableProvider {
-    snapshot: Arc<dyn TableSnapshot>,
+    snapshot: Arc<DeltaTableSnapshot>,
     pq_source: Arc<ParquetSource>,
 }
 
@@ -63,6 +63,10 @@ impl DeltaTableProvider {
             snapshot: Arc::new(snapshot),
             pq_source: Arc::new(parquet_source),
         })
+    }
+
+    pub(crate) fn current_snapshot(&self) -> &Arc<Snapshot> {
+        &self.snapshot.current_snapshot()
     }
 }
 
