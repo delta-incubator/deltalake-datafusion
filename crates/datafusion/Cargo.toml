@@ -11,9 +11,9 @@ version.workspace = true
 
 [dependencies]
 delta_kernel = { workspace = true }
+unitycatalog-common = { workspace = true }
 
 datafusion = { version = "49", features = ["avro"] }
-datafusion-functions = { version = "49" }
 datafusion-session = { version = "49" }
 
 async-trait = "0.1"

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 
 use datafusion::common::{DataFusionError, Result as DFResult, TableReference};
 use datafusion::execution::TaskContext;
@@ -12,8 +12,10 @@ use delta_kernel::object_store::ObjectStore;
 use delta_kernel::{Engine, Snapshot, Version};
 use parking_lot::RwLock;
 use tokio::runtime::{Handle, RuntimeFlavor};
+use unitycatalog_common::client::UnityCatalogClient;
 use url::Url;
 
+use crate::config::OpenLakehouseConfig;
 use crate::engine::DataFusionEngine;
 use crate::table_provider::{DeltaTableProvider, DeltaTableSnapshot, TableSnapshot};
 use crate::utils::AsObjectStoreUrl;
@@ -28,6 +30,8 @@ pub struct KernelExtensionConfig {
     object_store_factory: Option<Arc<dyn ObjectStoreFactory>>,
     /// Runtime handle to execute blocking tasks.
     handle: Option<Handle>,
+    /// client to interact with Unity Catalog
+    uc_client: Option<UnityCatalogClient>,
 }
 
 impl KernelExtensionConfig {
@@ -79,11 +83,12 @@ impl KernelExtensionConfig {
             }
         });
 
-        let ctx = with_engine(
+        let ctx = with_kernel_extension(
             ctx,
             engine,
             session_store.clone(),
             self.object_store_factory,
+            self.uc_client,
         );
         session_store.with_state(ctx.state_weak_ref());
 
@@ -91,22 +96,59 @@ impl KernelExtensionConfig {
     }
 }
 
-impl From<KernelExtensionConfig> for SessionContext {
-    fn from(val: KernelExtensionConfig) -> Self {
-        val.build()
-    }
-}
-
 pub struct KernelExtension {
     pub(crate) engine: Arc<dyn Engine>,
     object_store_factory: Option<Arc<dyn ObjectStoreFactory>>,
     session_store: Arc<SessionStore>,
+    uc_client: OnceLock<UnityCatalogClient>,
 }
 
 impl KernelExtension {
     /// Set the session state for the kernel extension.
     pub fn with_state(&self, state: Weak<RwLock<dyn Session>>) {
         self.session_store.with_state(state);
+    }
+
+    pub fn unity_catalog_client(&self) -> DFResult<UnityCatalogClient> {
+        if let Some(client) = self.uc_client.get() {
+            return Ok(client.clone());
+        }
+        if let Some(state) = self.session_store.get_session().upgrade() {
+            if let Some(lh_config) = state
+                .read()
+                .config_options()
+                .extensions
+                .get::<OpenLakehouseConfig>()
+            {
+                match (&lh_config.unity.uri, &lh_config.unity.token) {
+                    (Some(uri), Some(token)) => {
+                        let url = url::Url::parse(uri)
+                            .map_err(|e| DataFusionError::External(Box::new(e)))?;
+                        let client = UnityCatalogClient::new_with_token(url, token);
+                        let _ = self.uc_client.set(client.clone());
+                        Ok(client)
+                    }
+                    (Some(uri), None) => {
+                        let url = url::Url::parse(uri)
+                            .map_err(|e| DataFusionError::External(Box::new(e)))?;
+                        let client = UnityCatalogClient::new_unauthenticated(url);
+                        let _ = self.uc_client.set(client.clone());
+                        Ok(client)
+                    }
+                    _ => Err(DataFusionError::Execution(
+                        "no unity catalog URI provided".into(),
+                    )),
+                }
+            } else {
+                Err(DataFusionError::Execution(
+                    "no unity catalog configuration provided".into(),
+                ))
+            }
+        } else {
+            Err(DataFusionError::Execution(
+                "no session state provided".into(),
+            ))
+        }
     }
 
     pub async fn read_snapshot(
@@ -172,10 +214,7 @@ pub trait ObjectStoreFactory: Send + Sync + 'static {
 
 #[async_trait::async_trait]
 pub trait KernelContextExt: private::KernelContextExtInner {
-    fn enable_delta_kernel(
-        self,
-        config: impl Into<Option<KernelExtensionConfig>>,
-    ) -> SessionContext;
+    fn enable_delta_kernel(self, config: Option<KernelExtensionConfig>) -> SessionContext;
 
     async fn read_delta_snapshot(
         &self,
@@ -192,12 +231,9 @@ pub trait KernelContextExt: private::KernelContextExtInner {
 
 #[async_trait::async_trait]
 impl KernelContextExt for SessionContext {
-    fn enable_delta_kernel(
-        self,
-        config: impl Into<Option<KernelExtensionConfig>>,
-    ) -> SessionContext {
+    fn enable_delta_kernel(self, config: Option<KernelExtensionConfig>) -> SessionContext {
         if self.state_ref().read().kernel_ext().is_err() {
-            config.into().unwrap_or_default().with_context(self).into()
+            config.unwrap_or_default().with_context(self).build()
         } else {
             self
         }
@@ -326,19 +362,25 @@ pub(crate) async fn ensure_object_store(
     Ok(())
 }
 
-fn with_engine(
+fn with_kernel_extension(
     ctx: SessionContext,
     engine: Arc<dyn Engine>,
     session_store: Arc<SessionStore>,
     object_store_factory: Option<Arc<dyn ObjectStoreFactory>>,
+    uc_client: Option<UnityCatalogClient>,
 ) -> SessionContext {
     let session_id = ctx.session_id().clone();
     let mut new_config = ctx.copied_config();
-    new_config.set_extension(Arc::new(KernelExtension {
+    let mutextension = KernelExtension {
         engine,
         object_store_factory,
         session_store,
-    }));
+        uc_client: Default::default(),
+    };
+    if let Some(uc_client) = uc_client {
+        let _ = mutextension.uc_client.set(uc_client);
+    }
+    new_config.set_extension(Arc::new(mutextension));
     let ctx: SessionContext = ctx
         .into_state_builder()
         .with_session_id(session_id)

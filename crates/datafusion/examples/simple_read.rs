@@ -4,6 +4,7 @@ use datafusion::arrow::util::pretty::print_batches;
 use datafusion::catalog::CatalogProvider;
 use datafusion::catalog::MemoryCatalogProvider;
 use datafusion::execution::context::SessionContext;
+use deltalake_datafusion::config::OpenLakehouseConfig;
 use deltalake_datafusion::{DeltaLakeSchemaProvider, KernelContextExt as _};
 use url::Url;
 
@@ -14,7 +15,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base = Url::from_directory_path(std::fs::canonicalize(PATH)?).unwrap();
     let table_url = base.join("column_mapping/delta")?;
 
-    let ctx = SessionContext::new().enable_delta_kernel(None);
+    let config = OpenLakehouseConfig::session_config()
+        .set_str("lakehouse.unity.uri", "http://localhost:8080");
+
+    let ctx = SessionContext::new_with_config(config).enable_delta_kernel(None);
 
     // register and read a single table
     // TODO: right now the table provider does not internally refresh the snapshot
