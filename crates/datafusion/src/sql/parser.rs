@@ -409,7 +409,7 @@ impl<'a> HFParser<'a> {
             .map_err(|e| match e {
                 ParserError::RecursionLimitExceeded => DataFusionError::SQL(
                     Box::new(ParserError::RecursionLimitExceeded),
-                    Some(format!(" (current limit)")),
+                    Some(" (current limit)".to_string()),
                 ),
                 other => DataFusionError::SQL(Box::new(other), None),
             })

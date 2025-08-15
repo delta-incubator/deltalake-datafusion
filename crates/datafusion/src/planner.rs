@@ -58,7 +58,7 @@ impl ExtensionPlanner for OpenLakehousePlanner {
     ) -> Result<Option<Arc<dyn ExecutionPlan>>> {
         Ok(
             if let Some(uc_node) = node.as_any().downcast_ref::<ExecuteUnityCatalogPlanNode>() {
-                if logical_inputs.len() != 0 || physical_inputs.len() != 0 {
+                if !logical_inputs.is_empty() || !physical_inputs.is_empty() {
                     return Err(DataFusionError::Plan(
                         "Unexpected logical or physical inputs".to_string(),
                     ));

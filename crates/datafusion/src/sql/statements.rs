@@ -71,11 +71,11 @@ impl UnityCatalogStatement {
         use UnityCatalogStatement::*;
 
         match self {
-            CreateCatalog(cmd) => write!(f, "CreateCatalog: name={}", cmd.name.to_string()),
+            CreateCatalog(cmd) => write!(f, "CreateCatalog: name={}", cmd.name),
             DropCatalog(cmd) => write!(
                 f,
                 "DropCatalog: name={} if_exists={} cascade={}",
-                cmd.name.to_string(),
+                cmd.name,
                 cmd.if_exists,
                 cmd.cascade
             ),
