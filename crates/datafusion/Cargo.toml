@@ -16,6 +16,7 @@ unitycatalog-common = { workspace = true }
 datafusion = { version = "49", features = ["avro"] }
 datafusion-session = { version = "49" }
 
+arrow = "55"
 async-trait = "0.1"
 bytes = "1.6.0"
 chrono = "0.4.40"
@@ -23,6 +24,12 @@ dashmap = "6.0.1"
 futures = "0.3"
 itertools = "0.14"
 parking_lot = "0.12"
+serde = "1.0"
+serde_json = "1.0"
+sqlparser = { version = "0.55.0", default-features = false, features = [
+  "std",
+  "visitor",
+] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 url = "2.5.4"

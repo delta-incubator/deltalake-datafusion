@@ -4,9 +4,12 @@
 pub mod config;
 mod engine;
 mod error;
+mod exec;
 mod log_table_provider;
+mod planner;
 mod schema_provider;
 mod session;
+pub mod sql;
 mod table_provider;
 mod utils;
 
