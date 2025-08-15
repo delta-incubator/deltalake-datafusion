@@ -75,9 +75,7 @@ impl UnityCatalogStatement {
             DropCatalog(cmd) => write!(
                 f,
                 "DropCatalog: name={} if_exists={} cascade={}",
-                cmd.name,
-                cmd.if_exists,
-                cmd.cascade
+                cmd.name, cmd.if_exists, cmd.cascade
             ),
         }
     }
