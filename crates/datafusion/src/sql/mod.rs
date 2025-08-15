@@ -1,0 +1,16 @@
+mod parser;
+mod statements;
+
+use std::sync::Arc;
+
+use datafusion::common::Result;
+use datafusion::logical_expr::{Extension, LogicalPlan};
+
+pub use parser::*;
+pub use statements::*;
+
+pub fn uc_statement_to_plan(statement: UnityCatalogStatement) -> Result<LogicalPlan> {
+    Ok(LogicalPlan::Extension(Extension {
+        node: Arc::new(ExecuteUnityCatalogPlanNode { statement }),
+    }))
+}
