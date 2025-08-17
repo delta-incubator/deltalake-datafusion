@@ -13,11 +13,11 @@ use sqlparser::dialect::dialect_from_str;
 use unitycatalog_common::client::UnityCatalogClient;
 
 use crate::{
-    exec::{ExecutableUnityCatalogStement, UnityCatalogRequestExec},
     sql::{
         CREATE_UC_RETURN_SCHEMA, DROP_UC_RETURN_SCHEMA, ExecuteUnityCatalogPlanNode,
         HFParserBuilder, Statement, UnityCatalogStatement, uc_statement_to_plan,
     },
+    unity::{ExecutableUnityCatalogStement, UnityCatalogRequestExec},
 };
 
 #[derive(Debug)]

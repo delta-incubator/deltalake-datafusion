@@ -8,8 +8,9 @@ use delta_kernel::Snapshot;
 use parking_lot::RwLock;
 use url::Url;
 
+use crate::KernelSessionExt as _;
 use crate::session::ensure_object_store;
-use crate::{DeltaTableProvider, KernelSessionExt as _};
+use crate::table_provider::DeltaTableProvider;
 
 #[derive(Debug)]
 pub struct DeltaLakeSchemaProvider {

@@ -4,25 +4,22 @@
 pub mod config;
 mod engine;
 mod error;
-mod exec;
-mod log_table_provider;
 mod planner;
 mod schema_provider;
 mod session;
 pub mod sql;
-mod table_provider;
+pub mod table_provider;
+mod unity;
 mod utils;
 
 // re-export the version type as it is part of public api of this crate.
 pub use delta_kernel::Version;
 pub use engine::DataFusionEngine;
-pub use log_table_provider::{DeltaLogReplayProvider, DeltaLogTableProvider};
 pub use schema_provider::DeltaLakeSchemaProvider;
 pub use session::{
     KernelContextExt, KernelExtensionConfig, KernelSessionExt, KernelTaskContextExt,
     ObjectStoreFactory,
 };
-pub use table_provider::{DeltaTableProvider, ScanFileContext, TableScan, TableSnapshot};
 
 #[cfg(test)]
 pub(crate) mod tests {
