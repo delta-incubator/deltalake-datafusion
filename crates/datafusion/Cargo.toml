@@ -11,6 +11,7 @@ version.workspace = true
 
 [dependencies]
 delta_kernel = { workspace = true }
+unitycatalog-client = { workspace = true }
 unitycatalog-common = { workspace = true }
 
 datafusion = { version = "49", features = ["avro"] }

@@ -10,7 +10,7 @@ use datafusion::{
     physical_planner::{DefaultPhysicalPlanner, ExtensionPlanner, PhysicalPlanner},
 };
 use sqlparser::dialect::dialect_from_str;
-use unitycatalog_common::client::UnityCatalogClient;
+use unitycatalog_client::UnityCatalogClient;
 
 use crate::{
     sql::{
