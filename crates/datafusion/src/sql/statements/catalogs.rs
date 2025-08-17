@@ -1,7 +1,7 @@
 use arrow::array::RecordBatch;
 use datafusion::common::{DataFusionError, Result};
 use sqlparser::ast::{ObjectName, Value};
-use unitycatalog_common::client::UnityCatalogClient;
+use unitycatalog_client::UnityCatalogClient;
 use url::Url;
 
 use crate::sql::{create_response_to_batch, drop_response_to_batch};

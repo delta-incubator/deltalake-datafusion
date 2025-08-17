@@ -12,7 +12,7 @@ use delta_kernel::object_store::ObjectStore;
 use delta_kernel::{Engine, Snapshot, Version};
 use parking_lot::RwLock;
 use tokio::runtime::{Handle, RuntimeFlavor};
-use unitycatalog_common::client::UnityCatalogClient;
+use unitycatalog_client::UnityCatalogClient;
 use url::Url;
 
 use crate::config::OpenLakehouseConfig;

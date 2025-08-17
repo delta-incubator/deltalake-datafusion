@@ -12,7 +12,7 @@ use datafusion::{
         stream::RecordBatchStreamAdapter,
     },
 };
-use unitycatalog_common::client::UnityCatalogClient;
+use unitycatalog_client::UnityCatalogClient;
 
 use crate::KernelTaskContextExt;
 
