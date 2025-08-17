@@ -18,6 +18,9 @@ delta_kernel = { version = "0.14.0", features = [
   "arrow",
   "internal-api",
 ] }
-unitycatalog-common = { path = "../unitycatalog-rs/crates/common", default-features = false, features = [
+# unitycatalog-common = { path = "../unitycatalog-rs/crates/common", default-features = false, features = [
+#   "rest-client",
+# ] }
+unitycatalog-common = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "1db3e80940499b851c7cd070ecfd257f7e552fc7", default-features = false, features = [
   "rest-client",
 ] }
