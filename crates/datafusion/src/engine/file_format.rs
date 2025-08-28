@@ -12,19 +12,19 @@ use datafusion::physical_plan::execute_stream;
 use datafusion::physical_plan::union::UnionExec;
 use datafusion::physical_plan::{ExecutionPlan, PhysicalExpr};
 use datafusion_session::{Session, SessionStore};
+use delta_kernel::PredicateRef;
 use delta_kernel::engine::arrow_conversion::TryIntoArrow as _;
 use delta_kernel::engine::arrow_data::ArrowEngineData;
 use delta_kernel::engine::default::executor::TaskExecutor;
 use delta_kernel::engine::{parse_json as arrow_parse_json, to_json_bytes};
-use delta_kernel::object_store::{PutMode, path::Path};
 use delta_kernel::schema::SchemaRef;
 use delta_kernel::{
     DeltaResult, EngineData, Error as DeltaError, Expression, ExpressionRef,
     FileDataReadResultIterator, FileMeta, JsonHandler, ParquetHandler,
 };
-use delta_kernel::{PredicateRef, object_store};
 use futures::TryStreamExt;
 use futures::stream::{self, BoxStream, StreamExt};
+use object_store::{PutMode, path::Path};
 use parking_lot::RwLock;
 use tracing::warn;
 use url::Url;

@@ -92,10 +92,8 @@ mod tests {
     use std::ops::Range;
 
     use datafusion::prelude::SessionContext;
-    use delta_kernel::{
-        Engine,
-        object_store::{ObjectStore, local::LocalFileSystem, memory::InMemory, path::Path},
-    };
+    use delta_kernel::Engine;
+    use object_store::{ObjectStore, local::LocalFileSystem, memory::InMemory, path::Path};
     use rstest::*;
 
     use super::*;

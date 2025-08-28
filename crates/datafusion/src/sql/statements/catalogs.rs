@@ -22,8 +22,11 @@ impl CreateCatalogStatement {
         let name = self.name.to_string();
         let catalog_info = if let Some(location) = self.managed_location.as_ref() {
             // create a calog with explicit managed location
-            client
-                .create_catalog(&name, Some(location), self.comment.as_ref(), None)
+            let request = client
+                .create_catalog(&name)
+                .with_storage_root(location.to_string())
+                .with_comment(self.comment.clone());
+            request
                 .await
                 .map_err(|e| DataFusionError::External(Box::new(e)))?
         } else if let Some(share) = self.using_share.as_ref() {
@@ -36,20 +39,20 @@ impl CreateCatalogStatement {
             }
             let provider_name = share.0[0].to_string();
             let share_name = share.0[1].to_string();
-            client
-                .create_sharing_catalog(
-                    &name,
-                    provider_name,
-                    share_name,
-                    self.comment.as_ref(),
-                    None,
-                )
+            let request = client
+                .create_catalog(&name)
+                .with_provider_name(provider_name)
+                .with_share_name(share_name)
+                .with_comment(self.comment.clone());
+            request
                 .await
                 .map_err(|e| DataFusionError::External(Box::new(e)))?
         } else {
             // create a catalog with default settings
-            client
-                .create_catalog(&name, None::<String>, self.comment.as_ref(), None)
+            let request = client
+                .create_catalog(&name)
+                .with_comment(self.comment.clone());
+            request
                 .await
                 .map_err(|e| DataFusionError::External(Box::new(e)))?
         };
@@ -69,7 +72,8 @@ impl DropCatalogStatement {
         let name = self.name.to_string();
         client
             .catalog(&name)
-            .delete(self.cascade)
+            .delete()
+            .with_force(self.cascade)
             .await
             .map_err(|e| DataFusionError::External(Box::new(e)))?;
         drop_response_to_batch(name, "Catalog", "success")

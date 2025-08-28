@@ -52,7 +52,7 @@ impl DataFusionEvaluationHandler {
     fn evaluator(
         &self,
         schema: SchemaRef,
-        expression: Expression,
+        expression: Arc<Expression>,
         output_type: DataType,
     ) -> Arc<DataFusionExpressionEvaluator> {
         let maybe_schema: Result<ArrowSchema, _> = schema.as_ref().try_into_arrow();
@@ -79,7 +79,7 @@ impl EvaluationHandler for DataFusionEvaluationHandler {
     fn new_expression_evaluator(
         &self,
         schema: SchemaRef,
-        expression: Expression,
+        expression: Arc<Expression>,
         output_type: DataType,
     ) -> Arc<dyn ExpressionEvaluator> {
         self.evaluator(schema, expression, output_type)
@@ -88,11 +88,11 @@ impl EvaluationHandler for DataFusionEvaluationHandler {
     fn new_predicate_evaluator(
         &self,
         schema: SchemaRef,
-        predicate: Predicate,
+        predicate: Arc<Predicate>,
     ) -> Arc<dyn PredicateEvaluator> {
         self.evaluator(
             schema,
-            Expression::Predicate(Box::new(predicate)),
+            Expression::Predicate(Box::new(predicate.as_ref().clone())).into(),
             DataType::BOOLEAN,
         )
     }
@@ -268,7 +268,7 @@ mod tests {
 
         let evaluator = handler.new_expression_evaluator(
             input_schema,
-            expr,
+            expr.into(),
             DataType::Primitive(PrimitiveType::Integer),
         );
 
@@ -305,7 +305,7 @@ mod tests {
             StructField::new("y", DataType::Primitive(PrimitiveType::String), true),
         ])));
 
-        let evaluator = handler.new_expression_evaluator(input_schema, expr, output_type);
+        let evaluator = handler.new_expression_evaluator(input_schema, expr.into(), output_type);
         let result = evaluator.evaluate(&data).unwrap();
         let engine_data = ArrowEngineData::try_from_engine_data(result).unwrap();
 
@@ -332,7 +332,7 @@ mod tests {
 
         let evaluator = handler.new_expression_evaluator(
             input_schema,
-            expr,
+            expr.into(),
             DataType::Primitive(PrimitiveType::Integer),
         );
 
@@ -362,7 +362,7 @@ mod tests {
 
         let evaluator = handler.new_expression_evaluator(
             input_schema,
-            expr,
+            expr.into(),
             DataType::Primitive(PrimitiveType::Integer),
         );
 

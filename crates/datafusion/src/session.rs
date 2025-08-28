@@ -8,8 +8,8 @@ use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::default::executor::tokio::{
     TokioBackgroundExecutor, TokioMultiThreadExecutor,
 };
-use delta_kernel::object_store::ObjectStore;
 use delta_kernel::{Engine, Snapshot, Version};
+use object_store::ObjectStore;
 use parking_lot::RwLock;
 use tokio::runtime::{Handle, RuntimeFlavor};
 use unitycatalog_client::UnityCatalogClient;
