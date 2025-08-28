@@ -1,9 +1,9 @@
 use datafusion::common::HashMap;
 use datafusion::datasource::listing::PartitionedFile;
 use datafusion::execution::object_store::ObjectStoreUrl;
-use delta_kernel::object_store::path::Path;
 use delta_kernel::{DeltaResult, Error as DeltaError, FileMeta, FileSlice};
 use itertools::Itertools;
+use object_store::path::Path;
 use url::Url;
 
 pub(crate) trait AsObjectStoreUrl {

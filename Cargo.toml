@@ -13,16 +13,12 @@ rust-version = "1.85"
 version = "0.0.1"
 
 [workspace.dependencies]
-delta_kernel = { version = "0.14.0", features = [
-  "default-engine",
-  "arrow",
+delta_kernel = { version = "0.15.1", features = [
+  "default-engine-rustls",
+  "arrow-55",
   "internal-api",
 ] }
-# unitycatalog-client = { path = "../unitycatalog-rs/crates/client", features = [
-#   "sharing",
-# ] }
+# unitycatalog-client = { path = "../unitycatalog-rs/crates/client" }
 # unitycatalog-common = { path = "../unitycatalog-rs/crates/common", default-features = false }
-unitycatalog-client = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "68f0a4b25178f61bdbd4b8e4a1819bdc8f48a24c", features = [
-  "sharing",
-] }
-unitycatalog-common = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "68f0a4b25178f61bdbd4b8e4a1819bdc8f48a24c", default-features = false }
+unitycatalog-client = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "02e948cd1ac3bcebc751fed52b29e90aa0152f36" }
+unitycatalog-common = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "02e948cd1ac3bcebc751fed52b29e90aa0152f36", default-features = false }

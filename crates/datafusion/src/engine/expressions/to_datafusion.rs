@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use datafusion::common::scalar::ScalarStructBuilder;
 use datafusion::common::{DataFusionError, Result as DFResult, ScalarValue, not_impl_err};
 use datafusion::functions::core::expr_ext::FieldAccessor;
@@ -28,6 +30,7 @@ pub(crate) fn to_datafusion_expr(expr: &Expression, output_type: &DataType) -> D
         Expression::Binary(expr) => binary_to_df(expr, output_type),
         Expression::Opaque(_) => not_impl_err!("Opaque expressions are not yet supported"),
         Expression::Unknown(_) => not_impl_err!("Unknown expressions are not yet supported"),
+        Expression::Transform(_) => not_impl_err!("Transform expressions are not yet supported"),
     }
 }
 
@@ -151,7 +154,7 @@ fn junction_to_df(junction: &JunctionPredicate, output_type: &DataType) -> DFRes
     }
 }
 
-fn struct_to_df(fields: &[Expression], output_type: &DataType) -> DFResult<Expr> {
+fn struct_to_df(fields: &[Arc<Expression>], output_type: &DataType) -> DFResult<Expr> {
     let DataType::Struct(struct_type) = output_type else {
         return Err(DataFusionError::Execution(
             "expected struct output type".into(),
@@ -518,8 +521,8 @@ mod tests {
     #[test]
     fn test_struct_expression() {
         let expr = Expression::Struct(vec![
-            Expression::Column(ColumnName::new(["a"])),
-            Expression::Column(ColumnName::new(["b"])),
+            Expression::Column(ColumnName::new(["a"])).into(),
+            Expression::Column(ColumnName::new(["b"])).into(),
         ]);
         let result = to_datafusion_expr(
             &expr,
@@ -797,12 +800,13 @@ mod tests {
 
         // Test struct expressions with nested fields
         let expr = Expression::Struct(vec![
-            Expression::Column(ColumnName::new(["a"])),
+            Expression::Column(ColumnName::new(["a"])).into(),
             Expression::Binary(BinaryExpression {
                 left: Box::new(Expression::Column(ColumnName::new(["b"]))),
                 op: BinaryExpressionOp::Plus,
                 right: Box::new(Expression::Column(ColumnName::new(["c"]))),
-            }),
+            })
+            .into(),
         ]);
         let result = to_datafusion_expr(
             &expr,

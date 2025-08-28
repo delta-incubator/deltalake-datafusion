@@ -6,7 +6,6 @@ use delta_kernel::arrow::compute::{
 };
 use delta_kernel::arrow::datatypes::{DataType, Schema};
 
-use delta_kernel::object_store::{ObjectStore, local::LocalFileSystem};
 use delta_kernel::parquet::arrow::async_reader::{
     ParquetObjectReader, ParquetRecordBatchStreamBuilder,
 };
@@ -14,6 +13,7 @@ use delta_kernel::snapshot::Snapshot;
 use delta_kernel::{DeltaResult, Engine, Error, engine::arrow_data::ArrowEngineData};
 use futures::{StreamExt, stream::TryStreamExt};
 use itertools::Itertools;
+use object_store::{ObjectStore, local::LocalFileSystem};
 
 use crate::{TestCaseInfo, TestResult};
 
