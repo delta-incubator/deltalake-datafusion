@@ -141,6 +141,7 @@ impl SessionStateExt for SessionState {
                 self.statement_to_plan(statement.as_ref().clone()).await
             }
             Statement::UnityCatalog(statement) => uc_statement_to_plan(statement),
+            Statement::Vacuum(statement) => todo!("Implement vacuum statement"),
         }
     }
 }

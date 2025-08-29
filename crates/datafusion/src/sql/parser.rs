@@ -9,6 +9,7 @@ use sqlparser::parser::ParserError;
 use sqlparser::tokenizer::{Token, TokenWithSpan, Word};
 use url::Url;
 
+use crate::sql::commands::{Mode, VacuumStatement};
 use crate::sql::{CreateCatalogStatement, DropCatalogStatement, UnityCatalogStatement};
 
 /// Same as `sqlparser`
@@ -26,11 +27,12 @@ macro_rules! parser_err {
     }};
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     /// Datafusion SQL Statement.
     DFStatement(Box<DFStatement>),
     UnityCatalog(UnityCatalogStatement),
+    Vacuum(VacuumStatement),
 }
 
 /// Hydrofoil SQL Parser based on [`sqlparser`]
@@ -138,6 +140,10 @@ impl<'a> HFParser<'a> {
                     // NOTE: we must not consume DROP here, since we delegate to sqlparser-rs
                     // for regular parsing of DROP statements
                     Keyword::DROP => self.parse_drop(),
+                    Keyword::VACUUM => {
+                        self.parser.parser.next_token(); // VACUUM
+                        self.parse_vacuum()
+                    }
                     _ => {
                         // use sqlparser-rs parser
                         self.parse_and_handle_statement()
@@ -149,6 +155,67 @@ impl<'a> HFParser<'a> {
                 self.parse_and_handle_statement()
             }
         }
+    }
+
+    /// Parse a SQL `VACUUM` statement
+    pub fn parse_vacuum(&mut self) -> Result<Statement, DataFusionError> {
+        let name = self.parser.parser.parse_object_name(false)?;
+
+        let mut command = VacuumStatement {
+            name,
+            mode: None,
+            retention_hours: None,
+            dry_run: None,
+        };
+
+        loop {
+            if let Some(keyword) = self.parser.parser.parse_one_of_keywords(&[
+                Keyword::DRY,
+                Keyword::FULL,
+                Keyword::RETAIN,
+            ]) {
+                match keyword {
+                    Keyword::DRY => {
+                        self.parser.parser.expect_keyword(Keyword::RUN)?;
+                        ensure_not_set(&command.dry_run, "DRY RUN")?;
+                        command.dry_run = Some(true);
+                    }
+                    Keyword::FULL => {
+                        command.mode = Some(Mode::Full);
+                    }
+                    Keyword::RETAIN => {
+                        let hours = self.parser.parser.parse_number_value()?;
+                        match hours.value {
+                            Value::Number(n, _) => {
+                                command.retention_hours = Some(
+                                    n.parse()
+                                        .map_err(|e| DataFusionError::External(Box::new(e)))?,
+                                );
+                            }
+                            _ => {
+                                return Err(ParserError::ParserError(
+                                    "expected number value".into(),
+                                )
+                                .into());
+                            }
+                        }
+                        self.parser.parser.expect_keyword(Keyword::HOURS)?;
+                    }
+                    _ => {
+                        unreachable!()
+                    }
+                }
+            } else {
+                let token = self.parser.parser.next_token();
+                if token == Token::EOF || token == Token::SemiColon {
+                    break;
+                } else {
+                    return self.expected("end of statement or ;", token)?;
+                }
+            }
+        }
+
+        Ok(Statement::Vacuum(command))
     }
 
     /// Parse a SQL `CREATE` statement handling `CREATE EXTERNAL TABLE`

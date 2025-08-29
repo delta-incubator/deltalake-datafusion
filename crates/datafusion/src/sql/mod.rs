@@ -1,3 +1,4 @@
+mod commands;
 mod parser;
 mod unity;
 
