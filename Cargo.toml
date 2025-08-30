@@ -20,5 +20,5 @@ delta_kernel = { version = "0.15.1", features = [
 ] }
 # unitycatalog-client = { path = "../unitycatalog-rs/crates/client" }
 # unitycatalog-common = { path = "../unitycatalog-rs/crates/common", default-features = false }
-unitycatalog-client = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "02e948cd1ac3bcebc751fed52b29e90aa0152f36" }
-unitycatalog-common = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "02e948cd1ac3bcebc751fed52b29e90aa0152f36", default-features = false }
+unitycatalog-client = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "0cb586b2d04079943349e0f12957893f9deb8453" }
+unitycatalog-common = { git = "https://github.com/unitycatalog-incubator/unitycatalog-rs", rev = "0cb586b2d04079943349e0f12957893f9deb8453", default-features = false }

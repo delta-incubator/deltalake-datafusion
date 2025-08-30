@@ -17,8 +17,18 @@ impl ConfigExtension for UnityCatalogConfig {
 }
 
 extensions_options! {
+    pub struct RetentionDurationCheck {
+        /// Denotes if the retention duration check is enabled.
+        pub enabled: bool, default = true
+    }
+}
+
+extensions_options! {
     pub struct DeltaLakeConfig {
         pub enable_caching: bool, default = false
+
+        /// If enabled, prevents dangerous VACUUM operations from running on Delta tables.
+        pub retention_duration_check: RetentionDurationCheck, default = RetentionDurationCheck::default()
     }
 }
 
@@ -30,6 +40,7 @@ extensions_options! {
     pub struct OpenLakehouseConfig {
         /// Configuration to connect to unity catalog server
         pub unity: UnityCatalogConfig, default = UnityCatalogConfig::default()
+
         /// Configuration for interacting with delta tables
         pub delta: DeltaLakeConfig, default = DeltaLakeConfig::default()
     }

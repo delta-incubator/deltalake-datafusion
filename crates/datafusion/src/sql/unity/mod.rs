@@ -8,15 +8,15 @@ use arrow::{
     datatypes::{DataType, Field, Schema},
 };
 use datafusion::{
-    common::{DFSchema, DFSchemaRef, DataFusionError},
+    common::{DFSchema, DFSchemaRef, internal_err},
     error::Result,
     logical_expr::{LogicalPlan, UserDefinedLogicalNodeCore},
     prelude::Expr,
 };
-
-pub use catalogs::*;
 use serde::Serialize;
+use unitycatalog_client::UnityCatalogClient;
 
+pub use self::catalogs::*;
 use crate::unity::exec::ExecutableUnityCatalogStement;
 
 mod catalogs;
@@ -109,11 +109,30 @@ impl UserDefinedLogicalNodeCore for ExecuteUnityCatalogPlanNode {
 
     fn with_exprs_and_inputs(&self, exprs: Vec<Expr>, inputs: Vec<LogicalPlan>) -> Result<Self> {
         if !exprs.is_empty() || !inputs.is_empty() {
-            Err(DataFusionError::Internal(
-                "CreateCatalogPlanNode does not support exprs and inputs".to_string(),
-            ))
+            internal_err!("CreateCatalogPlanNode does not support exprs and inputs")
         } else {
             Ok(self.clone())
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ExecutableUnityCatalogStement for UnityCatalogStatement {
+    fn return_schema(&self) -> &DFSchemaRef {
+        use UnityCatalogStatement::*;
+
+        match &self {
+            CreateCatalog(_) => &CREATE_UC_RETURN_SCHEMA,
+            DropCatalog(_) => &DROP_UC_RETURN_SCHEMA,
+        }
+    }
+
+    async fn execute(&self, client: UnityCatalogClient) -> Result<RecordBatch> {
+        use UnityCatalogStatement::*;
+
+        match &self {
+            CreateCatalog(cmd) => cmd.execute(client).await,
+            DropCatalog(cmd) => cmd.execute(client).await,
         }
     }
 }

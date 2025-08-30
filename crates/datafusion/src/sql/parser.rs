@@ -140,12 +140,9 @@ impl<'a> HFParser<'a> {
                     // NOTE: we must not consume DROP here, since we delegate to sqlparser-rs
                     // for regular parsing of DROP statements
                     Keyword::DROP => self.parse_drop(),
-                    Keyword::VACUUM => {
-                        self.parser.parser.next_token(); // VACUUM
-                        self.parse_vacuum()
-                    }
+                    Keyword::VACUUM => self.parse_vacuum(),
                     _ => {
-                        // use sqlparser-rs parser
+                        // use datafusion parser
                         self.parse_and_handle_statement()
                     }
                 }
@@ -159,6 +156,9 @@ impl<'a> HFParser<'a> {
 
     /// Parse a SQL `VACUUM` statement
     pub fn parse_vacuum(&mut self) -> Result<Statement, DataFusionError> {
+        // consume VACUUM
+        self.parser.parser.next_token();
+
         let name = self.parser.parser.parse_object_name(false)?;
 
         let mut command = VacuumStatement {
@@ -538,6 +538,121 @@ mod tests {
                 managed_location,
                 ..
             })) if managed_location == &Some(expected_location)
+        ));
+    }
+
+    #[test]
+    fn test_parse_vacuum() {
+        let sql = "VACUUM my_table";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        let expected_name: ObjectName = vec![Ident::new("my_table")].into();
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                name,
+                mode: None,
+                retention_hours: None,
+                dry_run: None,
+            }) if name == &expected_name
+        ));
+
+        let sql = "VACUUM my_table DRY RUN";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                dry_run: Some(true),
+                ..
+            })
+        ));
+
+        let sql = "VACUUM my_table FULL";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                mode: Some(Mode::Full),
+                ..
+            })
+        ));
+
+        let sql = "VACUUM my_table RETAIN 24 HOURS";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                retention_hours: Some(24.0),
+                ..
+            })
+        ));
+
+        let sql = "VACUUM my_table FULL DRY RUN RETAIN 48 HOURS";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                mode: Some(Mode::Full),
+                retention_hours: Some(48.0),
+                dry_run: Some(true),
+                ..
+            })
+        ));
+
+        let sql = "VACUUM schema.my_table";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        let expected_name: ObjectName = vec![Ident::new("schema"), Ident::new("my_table")].into();
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                name,
+                ..
+            }) if name == &expected_name
+        ));
+
+        let sql = "VACUUM schema.my_table";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        let expected_name: ObjectName = vec![Ident::new("schema"), Ident::new("my_table")].into();
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                name,
+                ..
+            }) if name == &expected_name
+        ));
+
+        let sql = "VACUUM 's3://bucket/path'";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        let expected_name: ObjectName = vec![Ident::with_quote('\'', "s3://bucket/path")].into();
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                name,
+                ..
+            }) if name == &expected_name
+        ));
+
+        let sql = "VACUUM delta.'s3://bucket/path'";
+        let statements = HFParser::parse_sql(sql).unwrap();
+        assert_eq!(statements.len(), 1);
+        let expected_name: ObjectName = vec![
+            Ident::new("delta"),
+            Ident::with_quote('\'', "s3://bucket/path"),
+        ]
+        .into();
+        assert!(matches!(
+            &statements[0],
+            Statement::Vacuum(VacuumStatement {
+                name,
+                ..
+            }) if name == &expected_name
         ));
     }
 }

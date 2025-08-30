@@ -1,59 +1,51 @@
 use std::{any::Any, fmt, sync::Arc};
 
-use arrow::array::RecordBatch;
+use chrono::{DateTime, Utc};
 use datafusion::{
-    common::{DFSchemaRef, Statistics, internal_err},
-    error::Result,
+    common::{Result, Statistics},
     execution::{SendableRecordBatchStream, TaskContext},
     physical_expr::EquivalenceProperties,
     physical_plan::{
         DisplayAs, DisplayFormatType, Distribution, ExecutionPlan, Partitioning, PlanProperties,
         execution_plan::{Boundedness, EmissionType},
-        stream::RecordBatchStreamAdapter,
     },
 };
-use unitycatalog_client::UnityCatalogClient;
 
-use crate::KernelTaskContextExt;
+use crate::sql::VACUUM_RETURN_SCHEMA;
 
-#[async_trait::async_trait]
-pub trait ExecutableUnityCatalogStement: std::fmt::Debug + Send + Sync + 'static {
-    async fn execute(&self, client: UnityCatalogClient) -> Result<RecordBatch>;
-    fn return_schema(&self) -> &DFSchemaRef;
-}
-
-pub struct UnityCatalogRequestExec {
-    request: Arc<dyn ExecutableUnityCatalogStement>,
+#[derive(Debug)]
+pub struct VacuumExec {
+    min_retention_timestamp: DateTime<Utc>,
+    dry_run: bool,
+    inventory_plan: Arc<dyn ExecutionPlan>,
     cache: PlanProperties,
 }
 
-impl UnityCatalogRequestExec {
-    pub fn new(request: Arc<dyn ExecutableUnityCatalogStement>) -> Self {
+impl VacuumExec {
+    pub fn new(
+        min_retention_timestamp: DateTime<Utc>,
+        dry_run: bool,
+        inventory_plan: Arc<dyn ExecutionPlan>,
+    ) -> Self {
         Self {
+            min_retention_timestamp,
+            dry_run,
+            inventory_plan,
             cache: PlanProperties::new(
-                EquivalenceProperties::new(Arc::new(request.return_schema().as_arrow().clone())),
+                EquivalenceProperties::new(VACUUM_RETURN_SCHEMA.clone()),
                 Partitioning::UnknownPartitioning(1),
                 EmissionType::Incremental,
                 Boundedness::Bounded,
             ),
-            request,
         }
     }
 }
 
-impl std::fmt::Debug for UnityCatalogRequestExec {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("UnityCatalogRequestExec")
-            .field("request", &self.request)
-            .finish()
-    }
-}
-
-impl DisplayAs for UnityCatalogRequestExec {
+impl DisplayAs for VacuumExec {
     fn fmt_as(&self, t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         match t {
             DisplayFormatType::Default | DisplayFormatType::Verbose => {
-                write!(f, "ExecuteUCStatement: statement={:?}", self.request)
+                write!(f, "VacuumExec: inventory_plan={:?}", self.inventory_plan)
             }
             DisplayFormatType::TreeRender => {
                 // TODO: collect info
@@ -64,7 +56,7 @@ impl DisplayAs for UnityCatalogRequestExec {
 }
 
 #[async_trait::async_trait]
-impl ExecutionPlan for UnityCatalogRequestExec {
+impl ExecutionPlan for VacuumExec {
     fn name(&self) -> &'static str {
         Self::static_name()
     }
@@ -78,7 +70,7 @@ impl ExecutionPlan for UnityCatalogRequestExec {
     }
 
     fn required_input_distribution(&self) -> Vec<Distribution> {
-        vec![Distribution::SinglePartition]
+        vec![Distribution::UnspecifiedDistribution]
     }
 
     fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>> {
@@ -97,19 +89,7 @@ impl ExecutionPlan for UnityCatalogRequestExec {
         partition: usize,
         context: Arc<TaskContext>,
     ) -> Result<SendableRecordBatchStream> {
-        if 0 != partition {
-            return internal_err!("CreateCatalogExec invalid partition {partition}");
-        }
-
-        let uc_client = context.kernel_ext()?.unity_catalog_client()?;
-        let request = self.request.clone();
-
-        Ok(Box::pin(RecordBatchStreamAdapter::new(
-            self.schema(),
-            Box::pin(futures::stream::once(async move {
-                request.execute(uc_client).await
-            })),
-        )))
+        todo!()
     }
 
     fn statistics(&self) -> Result<Statistics> {
