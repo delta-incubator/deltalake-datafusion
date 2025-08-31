@@ -40,6 +40,10 @@ static DIRECTORY_LISTING_RETURN_SCHEMA: LazyLock<SchemaRef> = LazyLock::new(|| {
     arrow_schema.into()
 });
 
+pub(crate) static DIRECTORY_LISTING_RETURN_SCHEMA_DF: LazyLock<DFSchemaRef> = LazyLock::new(|| {
+    DFSchemaRef::new(DFSchema::try_from(DIRECTORY_LISTING_RETURN_SCHEMA.clone()).unwrap())
+});
+
 #[derive(Debug)]
 pub struct DirectoryListingExec {
     directory: Url,
