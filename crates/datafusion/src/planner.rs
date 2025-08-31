@@ -12,6 +12,7 @@ use sqlparser::dialect::dialect_from_str;
 use tracing::debug;
 
 use crate::{
+    KernelSessionExt,
     commands::{VacuumPlanNode, plan_vacuum},
     sql::{ExecuteUnityCatalogPlanNode, HFParserBuilder, Statement, uc_statement_to_plan},
     unity::UnityCatalogRequestExec,
