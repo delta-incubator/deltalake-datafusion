@@ -1,23 +1,21 @@
 use std::sync::Arc;
 
-use arrow::array::RecordBatch;
 use datafusion::{
-    common::{DFSchemaRef, not_impl_err, plan_datafusion_err},
-    error::{DataFusionError, Result},
+    common::{not_impl_err, plan_datafusion_err, plan_err},
+    error::Result,
     execution::{SessionState, context::QueryPlanner},
-    logical_expr::{LogicalPlan, UserDefinedLogicalNode},
+    logical_expr::{Extension, LogicalPlan, UserDefinedLogicalNode},
     physical_plan::ExecutionPlan,
     physical_planner::{DefaultPhysicalPlanner, ExtensionPlanner, PhysicalPlanner},
 };
 use sqlparser::dialect::dialect_from_str;
-use unitycatalog_client::UnityCatalogClient;
+use tracing::debug;
 
 use crate::{
-    sql::{
-        CREATE_UC_RETURN_SCHEMA, DROP_UC_RETURN_SCHEMA, ExecuteUnityCatalogPlanNode,
-        HFParserBuilder, Statement, UnityCatalogStatement, uc_statement_to_plan,
-    },
-    unity::{ExecutableUnityCatalogStement, UnityCatalogRequestExec},
+    KernelSessionExt,
+    commands::{VacuumPlanNode, plan_vacuum},
+    sql::{ExecuteUnityCatalogPlanNode, HFParserBuilder, Statement, uc_statement_to_plan},
+    unity::UnityCatalogRequestExec,
 };
 
 #[derive(Debug)]
@@ -45,6 +43,14 @@ impl QueryPlanner for OpenLakehouseQueryPlanner {
 
 pub struct OpenLakehousePlanner {}
 
+impl OpenLakehousePlanner {
+    fn handle_uc(&self, uc_node: &ExecuteUnityCatalogPlanNode) -> Result<Arc<dyn ExecutionPlan>> {
+        Ok(Arc::new(UnityCatalogRequestExec::new(Arc::new(
+            uc_node.statement.clone(),
+        ))) as _)
+    }
+}
+
 #[async_trait::async_trait]
 impl ExtensionPlanner for OpenLakehousePlanner {
     /// Create a physical plan for an extension node
@@ -54,47 +60,27 @@ impl ExtensionPlanner for OpenLakehousePlanner {
         node: &dyn UserDefinedLogicalNode,
         logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
-        _session_state: &SessionState,
+        session_state: &SessionState,
     ) -> Result<Option<Arc<dyn ExecutionPlan>>> {
-        Ok(
-            if let Some(uc_node) = node.as_any().downcast_ref::<ExecuteUnityCatalogPlanNode>() {
-                if !logical_inputs.is_empty() || !physical_inputs.is_empty() {
-                    return Err(DataFusionError::Plan(
-                        "Unexpected logical or physical inputs".to_string(),
-                    ));
-                }
-                Some(Arc::new(UnityCatalogRequestExec::new(Arc::new(
-                    uc_node.statement.clone(),
-                ))) as _)
-            } else {
-                None
-            },
-        )
-    }
-}
-
-#[async_trait::async_trait]
-impl ExecutableUnityCatalogStement for UnityCatalogStatement {
-    fn name(&self) -> &str {
-        self.command_name()
-    }
-
-    fn return_schema(&self) -> &DFSchemaRef {
-        use UnityCatalogStatement::*;
-
-        match &self {
-            CreateCatalog(_) => &CREATE_UC_RETURN_SCHEMA,
-            DropCatalog(_) => &DROP_UC_RETURN_SCHEMA,
+        if let Some(uc_node) = node.as_any().downcast_ref::<ExecuteUnityCatalogPlanNode>() {
+            if !logical_inputs.is_empty() || !physical_inputs.is_empty() {
+                return plan_err!(
+                    "ExecuteUnityCatalogPlanNode expects no logical or physical inputs"
+                );
+            }
+            debug!("Planning unity request: {:?}", uc_node);
+            return Ok(Some(self.handle_uc(uc_node)?));
         }
-    }
 
-    async fn execute(&self, client: UnityCatalogClient) -> Result<RecordBatch> {
-        use UnityCatalogStatement::*;
-
-        match &self {
-            CreateCatalog(cmd) => cmd.execute(client).await,
-            DropCatalog(cmd) => cmd.execute(client).await,
+        if let Some(vacuum_node) = node.as_any().downcast_ref::<VacuumPlanNode>() {
+            if !logical_inputs.is_empty() || !physical_inputs.is_empty() {
+                return plan_err!("VacuumPlanNode expects no logical or physical inputs");
+            }
+            debug!("Planning VACUUM: {:?}", vacuum_node);
+            return Ok(Some(plan_vacuum(session_state, vacuum_node).await?));
         }
+
+        Ok(None)
     }
 }
 
@@ -141,6 +127,9 @@ impl SessionStateExt for SessionState {
                 self.statement_to_plan(statement.as_ref().clone()).await
             }
             Statement::UnityCatalog(statement) => uc_statement_to_plan(statement),
+            Statement::Vacuum(statement) => Ok(LogicalPlan::Extension(Extension {
+                node: Arc::new(statement),
+            })),
         }
     }
 }

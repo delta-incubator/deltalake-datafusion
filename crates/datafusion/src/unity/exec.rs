@@ -18,7 +18,6 @@ use crate::KernelTaskContextExt;
 
 #[async_trait::async_trait]
 pub trait ExecutableUnityCatalogStement: std::fmt::Debug + Send + Sync + 'static {
-    fn name(&self) -> &str;
     async fn execute(&self, client: UnityCatalogClient) -> Result<RecordBatch>;
     fn return_schema(&self) -> &DFSchemaRef;
 }
@@ -70,7 +69,6 @@ impl ExecutionPlan for UnityCatalogRequestExec {
         Self::static_name()
     }
 
-    /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -94,7 +92,6 @@ impl ExecutionPlan for UnityCatalogRequestExec {
         Ok(self)
     }
 
-    /// Execute one partition and return an iterator over RecordBatch
     fn execute(
         &self,
         partition: usize,

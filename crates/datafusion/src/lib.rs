@@ -1,9 +1,11 @@
 // Datafusion error will trigger this warning.
 #![allow(clippy::result_large_err)]
 
+mod commands;
 pub mod config;
 mod engine;
 mod error;
+mod execution;
 mod planner;
 mod schema_provider;
 mod session;

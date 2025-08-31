@@ -152,11 +152,23 @@ impl KernelExtension {
         }
     }
 
-    pub async fn read_snapshot(
+    pub fn config(&self) -> Option<Arc<OpenLakehouseConfig>> {
+        self.session_store
+            .get_session()
+            .upgrade()
+            .and_then(|session| {
+                session
+                    .read()
+                    .config()
+                    .get_extension::<OpenLakehouseConfig>()
+            })
+    }
+
+    pub async fn read_snapshot_delta(
         &self,
         url: &Url,
         version: Option<Version>,
-    ) -> DFResult<Arc<dyn TableSnapshot>> {
+    ) -> DFResult<Snapshot> {
         let url = url.clone();
         let engine = self.engine.clone();
         let snapshot =
@@ -164,6 +176,15 @@ impl KernelExtension {
                 .await
                 .map_err(|e| DataFusionError::Execution(e.to_string()))?
                 .map_err(|e| DataFusionError::Execution(e.to_string()))?;
+        Ok(snapshot)
+    }
+
+    pub async fn read_snapshot(
+        &self,
+        url: &Url,
+        version: Option<Version>,
+    ) -> DFResult<Arc<dyn TableSnapshot>> {
+        let snapshot = self.read_snapshot_delta(url, version).await?;
         Ok(Arc::new(DeltaTableSnapshot::try_new(snapshot.into())?))
     }
 }

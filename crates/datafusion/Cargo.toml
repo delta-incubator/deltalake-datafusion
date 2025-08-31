@@ -11,6 +11,7 @@ version.workspace = true
 
 [dependencies]
 delta_kernel = { workspace = true }
+thiserror = { workspace = true }
 unitycatalog-client = { workspace = true }
 unitycatalog-common = { workspace = true }
 
@@ -25,7 +26,9 @@ dashmap = "6.0.1"
 futures = "0.3"
 itertools = "0.14"
 object_store = "0.12.3"
+ordered-float = { version = "5.0" }
 parking_lot = "0.12"
+pin-project-lite = "^0.2.7"
 serde = "1.0"
 serde_json = "1.0"
 sqlparser = { version = "0.55.0", default-features = false, features = [

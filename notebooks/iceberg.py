@@ -6,16 +6,17 @@ app = marimo.App()
 
 @app.cell
 def _():
-    from pyiceberg.catalog import load_catalog
     from pathlib import Path
+
     import pyarrow.parquet as pq
+    from pyiceberg.catalog import load_catalog
 
     warehouse_path = Path("./warehouse").absolute()
 
     catalog = load_catalog(
         "default",
         **{
-            'type': 'sql',
+            "type": "sql",
             "uri": f"sqlite:///{warehouse_path}/pyiceberg_catalog.db",
             "warehouse": f"file://{warehouse_path}",
         },
@@ -33,7 +34,7 @@ def _(pq):
 def _(catalog, df):
     catalog.create_namespace("default")
 
-    table = catalog.create_table(
+    _table = catalog.create_table(
         "default.taxi_dataset",
         schema=df.schema,
     )
@@ -42,7 +43,7 @@ def _(catalog, df):
 
 @app.cell
 def _(catalog):
-    table_1 = catalog.load_table('default.taxi_dataset')
+    table_1 = catalog.load_table("default.taxi_dataset")
     return (table_1,)
 
 
@@ -55,16 +56,17 @@ def _(df, table_1):
 @app.cell
 def _():
     import sqlite3
-    con = sqlite3.connect('./warehouse/pyiceberg_catalog.db')
+
+    con = sqlite3.connect("./warehouse/pyiceberg_catalog.db")
     cur = con.cursor()
-    res = cur.execute('SELECT name FROM sqlite_master')
+    res = cur.execute("SELECT name FROM sqlite_master")
     res.fetchone()
     return (cur,)
 
 
 @app.cell
 def _(cur):
-    res = cur.execute('SELECT * FROM iceberg_tables')
+    res = cur.execute("SELECT * FROM iceberg_tables")
     res.fetchall()
     return
 
