@@ -12,7 +12,6 @@ use sqlparser::dialect::dialect_from_str;
 use tracing::debug;
 
 use crate::{
-    KernelSessionExt,
     commands::{VacuumPlanNode, plan_vacuum},
     sql::{ExecuteUnityCatalogPlanNode, HFParserBuilder, Statement, uc_statement_to_plan},
     unity::UnityCatalogRequestExec,
@@ -30,7 +29,7 @@ impl QueryPlanner for OpenLakehouseQueryPlanner {
         logical_plan: &LogicalPlan,
         session_state: &SessionState,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        // Teach the default physical planner how to plan TopK nodes.
+        // Teach the default physical planner how to plan open lakehouse nodes.
         let physical_planner = DefaultPhysicalPlanner::with_extension_planners(vec![Arc::new(
             OpenLakehousePlanner {},
         )]);

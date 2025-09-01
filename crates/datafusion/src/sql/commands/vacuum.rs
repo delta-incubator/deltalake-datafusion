@@ -28,8 +28,9 @@ pub(crate) static VACUUM_RETURN_SCHEMA: LazyLock<SchemaRef> = LazyLock::new(|| {
 pub(crate) static VACUUM_RETURN_SCHEMA_DF: LazyLock<DFSchemaRef> =
     LazyLock::new(|| DFSchemaRef::new(DFSchema::try_from(VACUUM_RETURN_SCHEMA.clone()).unwrap()));
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Mode {
+    #[default]
     Full,
     Lite,
 }
@@ -40,12 +41,6 @@ impl fmt::Display for Mode {
             Mode::Full => write!(f, "FULL"),
             Mode::Lite => write!(f, "LITE"),
         }
-    }
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::Full
     }
 }
 

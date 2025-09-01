@@ -209,9 +209,9 @@ where
 
                 Poll::Ready(Some(Ok(batch)))
             }
-            Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e.into()))),
-            Poll::Ready(None) => return Poll::Ready(None),
-            Poll::Pending => return Poll::Pending,
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e.into()))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 

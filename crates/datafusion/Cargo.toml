@@ -17,6 +17,8 @@ unitycatalog-common = { workspace = true }
 
 datafusion = { version = "49", features = ["avro"] }
 datafusion-session = { version = "49" }
+datafusion-macros = { version = "49" }
+datafusion-doc = { version = "49" }
 
 arrow = "55"
 async-trait = "0.1"
@@ -24,6 +26,7 @@ bytes = "1.6.0"
 chrono = "0.4.40"
 dashmap = "6.0.1"
 futures = "0.3"
+http = "1.2.0"
 itertools = "0.14"
 object_store = "0.12.3"
 ordered-float = { version = "5.0" }
