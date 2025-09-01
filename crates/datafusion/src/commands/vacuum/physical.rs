@@ -114,7 +114,7 @@ impl ExecutionPlan for VacuumExec {
                         .column(0)
                         .as_string::<i32>()
                         .iter()
-                        .filter_map(|s| s.map(|p| Path::from(p)))
+                        .filter_map(|s| s.map(Path::from))
                         .map(Ok);
                     let delete_files = futures::stream::iter(path_iter).boxed();
                     let results = s

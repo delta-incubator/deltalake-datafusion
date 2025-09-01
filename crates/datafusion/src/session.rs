@@ -3,6 +3,7 @@ use std::sync::{Arc, OnceLock, Weak};
 use datafusion::common::{DataFusionError, Result as DFResult, TableReference};
 use datafusion::execution::TaskContext;
 use datafusion::execution::object_store::ObjectStoreRegistry;
+use datafusion::logical_expr::async_udf::AsyncScalarUDF;
 use datafusion::prelude::{DataFrame, SessionContext};
 use datafusion_session::{Session, SessionStore};
 use delta_kernel::engine::default::executor::tokio::{
@@ -17,6 +18,7 @@ use url::Url;
 
 use crate::config::OpenLakehouseConfig;
 use crate::engine::DataFusionEngine;
+use crate::functions::SignStorageUrl;
 use crate::planner::{OpenLakehouseQueryPlanner, SessionStateExt};
 use crate::table_provider::{DeltaTableProvider, DeltaTableSnapshot, TableSnapshot};
 use crate::utils::AsObjectStoreUrl;
@@ -404,17 +406,22 @@ fn with_kernel_extension(
     let extension = KernelExtension {
         engine,
         object_store_factory,
-        session_store,
+        session_store: session_store.clone(),
         uc_client: Default::default(),
     };
     if let Some(uc_client) = uc_client {
         let _ = extension.uc_client.set(uc_client);
     }
     new_config.set_extension(Arc::new(extension));
+
+    let sign_storage_url = AsyncScalarUDF::new(Arc::new(SignStorageUrl::new(session_store)));
+    let scalar_functions = vec![Arc::new(sign_storage_url.into_scalar_udf())];
+
     let ctx: SessionContext = ctx
         .into_state_builder()
         .with_session_id(session_id)
         .with_config(new_config)
+        .with_scalar_functions(scalar_functions)
         .with_query_planner(Arc::new(OpenLakehouseQueryPlanner {}))
         .build()
         .into();

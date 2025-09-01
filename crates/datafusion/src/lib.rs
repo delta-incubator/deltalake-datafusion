@@ -6,6 +6,7 @@ pub mod config;
 mod engine;
 mod error;
 mod execution;
+pub mod functions;
 mod planner;
 mod schema_provider;
 mod session;
